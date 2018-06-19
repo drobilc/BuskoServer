@@ -1,0 +1,8 @@
+{% if obvestilo is not none %}   
+	<h1>Zadnje obvestilo</h1>
+	<b>{{ obvestilo.naslov }}</b>
+	<p>{{ obvestilo.besedilo }}</p>
+	<p style="font-size: 0.6em; color: #373737;">Objavljeno {{ obvestilo.datum_objave }}</p>
+{% else %}
+	<p>Ni še obvestil.</p>
+{%endif %}

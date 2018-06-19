@@ -1,0 +1,17 @@
+{% extends "admin_base.html" %}
+{% block content %}
+	<div class="columns is-multiline">
+	
+	{% for plugin in plugins %}
+		{% set html = plugin.renderCard() %}
+		{% if html is not none %}
+			<div class="column is-one-third">
+				<div class="box">
+					{{ html|safe }}
+				</div>
+			</div>
+		{% endif %}
+	{% endfor %}
+
+	</div>
+{% endblock %}
