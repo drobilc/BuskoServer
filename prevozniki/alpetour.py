@@ -67,6 +67,10 @@ class Alpetour(Prevoznik):
 				"razdalja": "{} km".format(vrstica["KM_POT"]),
 				"url": ""
 			}
+			if prevoz["peron"] == None:
+				prevoz["peron"] = " "
+			if len(prevoz["prevoznik"]) > 20:
+				prevoz["prevoznik"] = prevoz["prevoznik"].split(" ")[0].replace(",", "")
 			prevoziPodatki.append(prevoz)
 		return prevoziPodatki
 
