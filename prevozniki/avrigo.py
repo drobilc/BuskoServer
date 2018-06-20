@@ -1,9 +1,10 @@
+from .prevoznik import Prevoznik
 import requests
 from bs4 import BeautifulSoup
 import datetime
 import re
 
-class Busko(object):
+class Avrigo(Prevoznik):
 	
 	def __init__(self):
 		self.seja = requests.Session()
@@ -22,14 +23,18 @@ class Busko(object):
 		podatki = {"prefixText": "", "count": 1000000}
 		response = self.seja.post(postajeUrl, json=podatki)
 		jsonData = response.json()
-		self.seznamPostaj = jsonData['d']
+		self.postaje = jsonData['d']
+
+	def seznamPostaj(self):
+		if len(self.postaje) <= 0:
+			self.prenesiSeznamPostaj()
+		return self.postaje
 
 	def obstajaPostaja(self, imePostaje):
-		return imePostaje in self.seznamPostaj
+		return imePostaje in self.postaje
 
 	def prenesiSurovePodatke(self, vstopnaPostaja, izstopnaPostaja, datum):
-		if type(datum) is datetime.datetime:
-			datum = datum.strftime("%d.%m.%Y")
+		pretvorjenDatum = datum.strftime("%d.%m.%Y")
 		vozniRedUrl = "https://voznired.noleggio-bus.it/VozniRed.aspx"
 
 		podatki = {
@@ -43,7 +48,7 @@ class Busko(object):
 			"ButtonPrikazi": "Prikazi",
 			"TextBoxVstop": vstopnaPostaja,
 			"TextBoxIzstop": izstopnaPostaja,
-			"TextBoxDatum": datum
+			"TextBoxDatum": pretvorjenDatum
 		}
 		response = self.seja.post(vozniRedUrl, data=podatki)
 		html = BeautifulSoup(response.text, "html.parser")
@@ -51,11 +56,18 @@ class Busko(object):
 
 	def prenesiVozniRed(self, vstopnaPostaja, izstopnaPostaja, datum):
 		html = self.prenesiSurovePodatke(vstopnaPostaja, izstopnaPostaja, datum)
+
+		# Ce ne najdemo voznega reda, je prikazana tabela kontrola vnosa
+		if html.find("table", {"id": "TableKontrolaVnosa"}):
+			return []
+
 		tabela = html.find("table", {"id": "TableVozniRed"})
 		vrstice = tabela.findAll("tr")
 
 		# Dobimo naslove vrstic (prevoznik, prihod, odhod, ...)
-		nasloviVrstic = [stolpec.text.lower() for stolpec in vrstice[0].findAll("td")]
+		#nasloviVrstic = [stolpec.text.lower() for stolpec in vrstice[0].findAll("td")]
+		# Naslovi vrstic so vedno enaki
+		nasloviVrstic = ["prevoznik", "odhod", "prihod", "trajanje", "razdalja", "peron", "cena"]
 
 		# Vse podatke shranimo v tabelo
 		prevoziPodatki = []
@@ -79,22 +91,17 @@ class Busko(object):
 		
 			slovarPodatkov = dict(zip(nasloviVrstic, besediloStolpcev))
 			slovarPodatkov["url"] = potUrl
+			
+			# Ura prihoda in odhoda morata biti v datetime obliki
+			uraPrihoda = datetime.datetime.strptime(slovarPodatkov["prihod"], "%H:%M")
+			casPrihoda = datum.replace(hour=uraPrihoda.hour, minute=uraPrihoda.minute)
+			slovarPodatkov["prihod"] = casPrihoda
+
+			uraOdhoda = datetime.datetime.strptime(slovarPodatkov["odhod"], "%H:%M")
+			casOdhoda = datum.replace(hour=uraOdhoda.hour, minute=uraOdhoda.minute)
+			slovarPodatkov["odhod"] = casOdhoda
+
+			#slovarPodatkov["prihod"] = 
 			prevoziPodatki.append(slovarPodatkov)
-
-		return prevoziPodatki
-
-	def prenesiGlobalniVozniRed(self, vstopnaPostaja, izstopnaPostaja):
-		html = self.prenesiSurovePodatke(vstopnaPostaja, izstopnaPostaja, "")
-		tabela = html.find("table", {"id": "TableVozniRed"})
-		vrstice = tabela.findAll("tr")
-
-		prevoziPodatki = []
-
-		for vrstica in vrstice:
-			stolpci = [stolpec.text for stolpec in vrstica.findAll("td")]
-			podatki = zip(stolpci[::2], stolpci[1::2])
-			for podatek in podatki:
-				slovarPodatkov = dict(zip(["ura", "tip"], podatek))
-				prevoziPodatki.append(slovarPodatkov)
 
 		return prevoziPodatki

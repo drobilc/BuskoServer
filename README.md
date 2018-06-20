@@ -86,3 +86,13 @@ Primer enega objekta iz seznama:
 
 #### Primer zahtevka
 [`http://gobo.si:7000/vozni_red?vstopna_postaja=Nova Gorica AP&izstopna_postaja=Ajdovščina&datum=15.06.2018`](http://gobo.si:7000/vozni_red?vstopna_postaja=Nova%20Gorica%20AP&izstopna_postaja=Ajdov%C5%A1%C4%8Dina&datum=15.06.2018)
+
+## Prevozniki
+Za dodajanje novega prevoznika je potrebno ustvariti novo datoteko v mapi `prevozniki`.
+Datoteka naj vsebuje razred z imenom prevoznika, ta pa naj deduje od razreda `prevoznik.Prevoznik`.
+Potrebno je napisati tri funkcije in sicer:
+* `seznamPostaj` - vrne seznam (list) postaj ki jih ta prevoznik ponuja
+* `obstajaPostaja(imePostaje)` - vrne `True` v primeru da postaja obstaja, sicer `False`
+* `prenesiVozniRed(vstopnaPostaja, izstopnaPostaja, datum)` - vrne seznam slovarjev, pri katerem vsak slovar vsebuje ključe `prihod`, `odhod`, `trajanje`, `peron`, `prevoznik`, `cena`, `razdalja`, `url`.
+Vstopna in izstopna postaja sta niza, datum pa je objekt tipa `datetime`.
+`odhod` in `prihod` morata biti obvezno objekta tipa `datetime`.

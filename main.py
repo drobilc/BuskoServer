@@ -3,9 +3,12 @@ from flask_sqlalchemy import SQLAlchemy
 import datetime, dateutil.parser
 import glob, os, importlib, inspect
 
+from concurrent.futures import ThreadPoolExecutor
+
 # Moji importi
 from plugins.models import Base, Obvestilo, Iskanje
-from busko import Busko
+from prevozniki.avrigo import Avrigo
+from prevozniki.alpetour import Alpetour
 
 # Ustvarimo instanco flask razreda
 app = Flask(__name__)
@@ -15,9 +18,8 @@ database = SQLAlchemy(app)
 # Objekt, ki bo hranil stara iskanja, v prihodnosti POPRAVI
 iskanja = {}
 
-# Ustvarimo objekt, ki nam po pomagal pri prenasanju podatkov
-# iz spletne strani Avriga
-avrigo = Busko()
+# Ustvarimo objekte, za prenos podatkov o voznih redih
+prevozniki = [Avrigo(), Alpetour()]
 
 @app.before_first_request
 def setup():
@@ -117,6 +119,14 @@ def najdi_obvestila():
 	# Vrnemo prazen objekt, obvestila ni
 	return jsonify(None)
 
+# Definiramo endpoint za seznam postaj
+@app.route("/postaja", methods=["GET"])
+def seznam_postaj():
+	vse_postaje = set()
+	for prevoznik in prevozniki:
+		vse_postaje = vse_postaje.union(set(prevoznik.seznamPostaj()))
+	return jsonify(sorted(list(vse_postaje)))
+
 # Definiramo endpoint za vozne rede
 @app.route("/vozni_red", methods=["GET"])
 def vozni_red():
@@ -138,32 +148,23 @@ def vozni_red():
 	database.session.commit()
 
 	print("Search from {}: {} -> {}".format(request.remote_addr, vstopna_postaja, izstopna_postaja))
-	#ipji.add(request.remote_addr)
 
-	# Preverimo ali obe postaji obstajata
-	if avrigo.obstajaPostaja(vstopna_postaja) and avrigo.obstajaPostaja(izstopna_postaja):
+	skupni_vozni_red = []
+	with ThreadPoolExecutor(max_workers=len(prevozniki)) as pool:
+		for prevoznik in prevozniki:
+			if prevoznik.obstajaPostaja(vstopna_postaja) and prevoznik.obstajaPostaja(izstopna_postaja):
+				rezultat = pool.submit(prevoznik.prenesiVozniRed, vstopna_postaja, izstopna_postaja, pretvorjen_datum)
+				skupni_vozni_red.extend(rezultat.result())
 
-		postaji = (vstopna_postaja, izstopna_postaja)
+	# Uredimo vozni red po datumih
+	skupni_vozni_red.sort(key=lambda x: x["prihod"])
 
-		# Preverimo ali smo red ze prenesli
-		if postaji in iskanja and datum in iskanja[postaji]:
-			#print("Vozni red ze obstaja, posiljam podatke")
-			return jsonify(iskanja[postaji][datum])
+	# Spremenimo ure nazaj v normalno obliko
+	for prevoz in skupni_vozni_red:
+		prevoz["odhod"] = prevoz["odhod"].strftime("%H:%M")
+		prevoz["prihod"] = prevoz["prihod"].strftime("%H:%M")
 
-		#print("Vozni red se ne obstaja, prenasam podatke")
-		red = avrigo.prenesiVozniRed(vstopna_postaja, izstopna_postaja, pretvorjen_datum)
-
-		if postaji not in iskanja:
-			iskanja[postaji] = {}
-
-		iskanja[postaji][datum] = red
-		return jsonify(red)
-
-	else:
-		return jsonify({
-			"error_code": 1,
-			"title": "Postaja ne obstaja",
-			"detail": "Vstopna ali izstopna postaja ne obstaja"}), 404
+	return jsonify(skupni_vozni_red)
 
 if __name__ == '__main__':
 	app.run(host="0.0.0.0", port=7000, debug=False, threaded=True)
