@@ -6,7 +6,7 @@ import glob, os, importlib, inspect
 from concurrent.futures import ThreadPoolExecutor
 
 # Moji importi
-from plugins.models import Base, Obvestilo, Iskanje
+from plugins.models import Base, Obvestilo, Iskanje, Prevoz
 from prevozniki.avrigo import Avrigo
 from prevozniki.alpetour import Alpetour
 
@@ -143,11 +143,20 @@ def vozni_red():
 	else:
 		datum = pretvorjen_datum.strftime("%d.%m.%Y")
 
-	iskanje = Iskanje(vstopna_postaja=vstopna_postaja, izstopna_postaja=izstopna_postaja, datum=pretvorjen_datum, datum_iskanja=datetime.datetime.utcnow())
-	database.session.add(iskanje)
-	database.session.commit()
-
 	print("Search from {}: {} -> {}".format(request.remote_addr, vstopna_postaja, izstopna_postaja))
+
+	# Preverimo, ali je to iskanje ze v tabeli iskanj
+	zadetek = database.session.query(Iskanje).filter_by(vstopna_postaja=vstopna_postaja, izstopna_postaja=izstopna_postaja, datum=pretvorjen_datum.date()).first()
+	# Ce je zadetek ze v tabeli, ne prenasamo voznega reda temvec kar vrnemo te podatke
+	if zadetek != None:
+		print("Vozni red je ze najden")
+		vozni_red = [zadetek.toDictionary() for zadetek in zadetek.prevozi]
+		for prevoz in vozni_red:
+			prevoz["odhod"] = prevoz["odhod"].strftime("%H:%M")
+			prevoz["prihod"] = prevoz["prihod"].strftime("%H:%M")
+		return jsonify(vozni_red)
+
+	iskanje = Iskanje(vstopna_postaja=vstopna_postaja, izstopna_postaja=izstopna_postaja, datum=pretvorjen_datum, datum_iskanja=datetime.datetime.utcnow())
 
 	skupni_vozni_red = []
 	with ThreadPoolExecutor(max_workers=len(prevozniki)) as pool:
@@ -157,7 +166,22 @@ def vozni_red():
 				skupni_vozni_red.extend(rezultat.result())
 
 	# Uredimo vozni red po datumih
-	skupni_vozni_red.sort(key=lambda x: x["prihod"])
+	skupni_vozni_red.sort(key=lambda x: x["odhod"])
+
+	# Dodamo prevoze pod iskanje v bazo podatkov
+	for prevoz in skupni_vozni_red:
+		prevozTabela = Prevoz(
+			prihod=prevoz["prihod"],
+			odhod=prevoz["odhod"],
+			peron=prevoz["peron"],
+			prevoznik=prevoz["prevoznik"],
+			cena=prevoz["cena"],
+			razdalja=prevoz["razdalja"]
+		)
+		iskanje.prevozi.append(prevozTabela)
+
+	database.session.add(iskanje)
+	database.session.commit()
 
 	# Spremenimo ure nazaj v normalno obliko
 	for prevoz in skupni_vozni_red:

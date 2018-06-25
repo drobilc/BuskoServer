@@ -1,5 +1,6 @@
-from sqlalchemy import Column, Integer, String, DateTime, Date
+from sqlalchemy import Table, Column, Integer, String, DateTime, Date, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import relationship
 
 Base = declarative_base()
 
@@ -23,6 +24,12 @@ class Obvestilo(Base):
 	def __repr__(self):
 		return "<Obvestilo(naslov='{}', besedilo='{}')>".format(self.naslov, self.besedilo)
 
+# Vmesna tabela med iskanjem in prevozom
+vmesnaTabela = Table('association', Base.metadata,
+	Column('iskanje_id', Integer, ForeignKey('iskanje.id')),
+	Column('prevoz_id', Integer, ForeignKey('prevoz.id'))
+)
+
 class Iskanje(Base):
 
 	__tablename__ = 'iskanje'
@@ -37,6 +44,9 @@ class Iskanje(Base):
 	# Dodatne informacije o iskanju (datum iskanja)
 	datum_iskanja = Column(DateTime)
 
+	# Povezava na tabelo prevozov
+	prevozi = relationship("Prevoz", secondary=vmesnaTabela)
+
 	def toDictionary(self):
 		return {
 			"vstopna_postaja": self.vstopna_postaja,
@@ -47,3 +57,30 @@ class Iskanje(Base):
 
 	def __repr__(self):
 		return "<Iskanje(vstopna_postaja='{}', izstopna_postaja='{}')>".format(self.vstopna_postaja, self.izstopna_postaja)
+
+class Prevoz(Base):
+
+	__tablename__ = 'prevoz'
+	
+	id = Column(Integer, primary_key=True)
+	prihod = Column(DateTime)
+	odhod = Column(DateTime)
+	peron = Column(String)
+	prevoznik = Column(String)
+	cena = Column(String) # Popravi v prihodnosti
+	razdalja = Column(String)
+
+	def toDictionary(self):
+		return {
+			"prihod": self.prihod,
+			"odhod": self.odhod,
+			"peron": self.peron,
+			"prevoznik": self.prevoznik,
+			"cena": self.cena,
+			"razdalja": self.razdalja,
+			"trajanje": str(self.prihod - self.odhod),
+			"url": ""
+		}
+
+	def __repr__(self):
+		return "<Prevoz(prihod='{}', odhod='{}')>".format(self.prihod, self.odhod)
