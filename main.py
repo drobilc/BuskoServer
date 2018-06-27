@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from plugins.models import Base, Obvestilo, Iskanje, Prevoz
 from prevozniki.avrigo import Avrigo
 from prevozniki.alpetour import Alpetour
+from prevozniki.apms import AvtobusniPrevozMurskaSobota
 
 # Ustvarimo instanco flask razreda
 app = Flask(__name__)
@@ -19,7 +20,7 @@ database = SQLAlchemy(app)
 iskanja = {}
 
 # Ustvarimo objekte, za prenos podatkov o voznih redih
-prevozniki = [Avrigo(), Alpetour()]
+prevozniki = [Avrigo(), Alpetour(), AvtobusniPrevozMurskaSobota()]
 
 @app.before_first_request
 def setup():
