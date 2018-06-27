@@ -50,6 +50,8 @@ class AvtobusniPrevozMurskaSobota(Prevoznik):
 				"razdalja": "{} km".format(vrstica["km"]),
 				"url": ""
 			}
+			if len(prevoz["prevoznik"]) > 20:
+				prevoz["prevoznik"] = "AP Murska Sobota"
 			prevoziPodatki.append(prevoz)
 		return prevoziPodatki
 
