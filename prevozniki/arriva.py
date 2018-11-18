@@ -8,11 +8,7 @@ class Arriva(Prevoznik):
 	
 	def __init__(self):
 		self.seja = requests.Session()
-		"""try:
-			response = self.seja.get("http://193.95.251.195:35544/VozniRedi2/")
-			html = BeautifulSoup(response.content, "html.parser")
-		except Exception:
-			pass"""
+		self.cene = [1.3] + [x for x in [1.3, 1.8, 2.3, 2.7, 3.1, 3.6, 4.1, 4.7, 5.2, 5.6, 6.0, 6.3, 6.7, 6.9, 7.2, 7.5, 7.9, 8.3, 8.7, 9.2, 9.6, 9.9, 10.3, 10.7, 11.1, 11.4, 11.6, 12.0, 12.4, 12.8] for i in range(5)] + [13.6] + [x for x in [13.6, 14.4, 15.2, 16.0, 16.8, 17.6, 18.4, 19.2] for i in range(10)]
 		self.prenesiSeznamPostaj()
 
 	def prenesiSeznamPostaj(self):
@@ -60,6 +56,11 @@ class Arriva(Prevoznik):
 		html = BeautifulSoup(response.text, "html.parser")
 		return html
 
+	def cena(self, razdalja):
+		if razdalja >= len(self.cene) or razdalja < 0:
+			return 0
+		return self.cene[razdalja]
+
 	def prenesiVozniRed(self, vstopnaPostaja, izstopnaPostaja, datum):
 		html = self.prenesiSurovePodatke(vstopnaPostaja, izstopnaPostaja, datum)
 
@@ -77,26 +78,28 @@ class Arriva(Prevoznik):
 		prevoziPodatki = []
 
 		for vrstica in vrstice[1:]:
-			besediloStolpcev = [stolpec.text.strip() for stolpec in vrstica.findChildren("td", recursive=False)[0:-1]]
-			
-			slovarPodatkov = dict(zip(nasloviVrstic, besediloStolpcev))
-			#slovarPodatkov["url"] = potUrl
-			
-			# Ura prihoda in odhoda morata biti v datetime obliki
-			uraPrihoda = datetime.datetime.strptime(slovarPodatkov["prihod"], "%H:%M")
-			casPrihoda = datum.replace(hour=uraPrihoda.hour, minute=uraPrihoda.minute)
-			slovarPodatkov["prihod"] = casPrihoda
+			try:
+				besediloStolpcev = [stolpec.text.strip() for stolpec in vrstica.findChildren("td", recursive=False)[0:-1]]
+				
+				slovarPodatkov = dict(zip(nasloviVrstic, besediloStolpcev))
+				
+				# Ura prihoda in odhoda morata biti v datetime obliki
+				uraPrihoda = datetime.datetime.strptime(slovarPodatkov["prihod"], "%H:%M")
+				casPrihoda = datum.replace(hour=uraPrihoda.hour, minute=uraPrihoda.minute)
+				slovarPodatkov["prihod"] = casPrihoda
 
-			uraOdhoda = datetime.datetime.strptime(slovarPodatkov["odhod"], "%H:%M")
-			casOdhoda = datum.replace(hour=uraOdhoda.hour, minute=uraOdhoda.minute)
-			slovarPodatkov["odhod"] = casOdhoda
+				uraOdhoda = datetime.datetime.strptime(slovarPodatkov["odhod"], "%H:%M")
+				casOdhoda = datum.replace(hour=uraOdhoda.hour, minute=uraOdhoda.minute)
+				slovarPodatkov["odhod"] = casOdhoda
 
-			# Ostali podatki
-			slovarPodatkov["peron"] = ""
-			slovarPodatkov["prevoznik"] = "Arriva"
-			slovarPodatkov["cena"] = ""
-			slovarPodatkov["url"] = ""
+				# Ostali podatki
+				slovarPodatkov["peron"] = ""
+				slovarPodatkov["prevoznik"] = "Arriva"
+				slovarPodatkov["cena"] = "{:.2f} EUR".format(self.cena(int(slovarPodatkov["razdalja"])))
+				slovarPodatkov["url"] = ""
 
-			prevoziPodatki.append(slovarPodatkov)
+				prevoziPodatki.append(slovarPodatkov)
+			except Exception:
+				pass
 
 		return prevoziPodatki
