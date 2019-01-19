@@ -165,7 +165,7 @@ def vozni_red():
 		"vozni_red": skupni_vozni_red
 	})
 
-	for prevoz in najden_prevoz['vozni_red']:
+	for prevoz in skupni_vozni_red:
 		prevoz['odhod'] = prevoz['odhod'].strftime('%H:%M')
 		prevoz['prihod'] = prevoz['prihod'].strftime('%H:%M')
 
