@@ -1,14 +1,11 @@
 from flask import Flask, request, jsonify, render_template
-from flask_sqlalchemy import SQLAlchemy
 import datetime, dateutil.parser
 import glob, os, importlib, inspect
-
+import sys
+from pymongo import MongoClient
 from concurrent.futures import ThreadPoolExecutor
 
-import sys
-
 # Moji importi
-from plugins.models import Base, Obvestilo, Iskanje, Prevoz
 from prevozniki.avrigo import Avrigo
 from prevozniki.alpetour import Alpetour
 from prevozniki.apms import AvtobusniPrevozMurskaSobota
@@ -17,111 +14,26 @@ from prevozniki.arriva import Arriva
 
 # Ustvarimo instanco flask razreda
 app = Flask(__name__, static_url_path='')
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
-database = SQLAlchemy(app)
 
-# Objekt, ki bo hranil stara iskanja, v prihodnosti POPRAVI
-iskanja = {}
+# Povezemo se na bazo podatkov
+client = MongoClient('localhost', 27017)
+database = client.busko
+prevozi = database.prevozi
+iskanja = database.iskanja
 
 # Ustvarimo objekte, za prenos podatkov o voznih redih
 prevozniki = [Avrigo(), Alpetour(), AvtobusniPrevozMurskaSobota(), Arriva(), APLjubljana()]
 
-@app.before_first_request
-def setup():
-	#Base.metadata.drop_all(bind=database.engine)
-	Base.metadata.create_all(bind=database.engine)
-	database.session.commit()
-
-# PLUGIN SISTEM BORIS!
-availablePlugins = glob.glob("plugins/**/*.py")
-enabledPlugins = {}
-
-def getPluginName(pluginPath):
-	pluginName = os.path.basename(pluginPath)
-	if ".py" in pluginName:
-		pluginName = pluginName.replace(".py", "")
-	return pluginName
-
-def getMainClass(plugin, pluginName):
-	allClasses = inspect.getmembers(plugin, inspect.isclass)
-	if len(allClasses) > 0:
-		mainClass = None
-		for className in allClasses:
-			if className[0] == pluginName:
-				mainClass = className[1]
-				return mainClass
-
-def importPlugin(pluginPath):
-	# Get plugin name and print debug info
-	pluginName = getPluginName(pluginPath)
-	absolutePath, filename = os.path.split(pluginPath)
-
-	print(" - Importing plugin {}".format(pluginName))
-
-	# Import plugin from path
-	importedPlugin = importlib.import_module("plugins.{}.{}".format(pluginName, pluginName))
-
-	# Get main class from plugin
-	mainClass = getMainClass(importedPlugin, pluginName)
-	if mainClass:
-		# Create object from class
-		pluginObject = mainClass(database)
-		pluginObject.absolutePath = absolutePath
-		return pluginObject
-
-# Import plugins
-"""print("Importing plugins")
-for pluginPath in availablePlugins:
-	pluginName = getPluginName(pluginPath)
-	# Create plugin object
-	importedPlugin = importPlugin(pluginPath)
-	enabledPlugins[pluginName] = importedPlugin
-
-# Tukaj dodamo se lastno kodo za plugine
-@app.route("/admin")
-def sendAdminDashboard():
-	return render_template('admin_dashboard.html', plugins=[enabledPlugins[p] for p in enabledPlugins])
-
-@app.route("/admin/plugin/<pluginName>", methods=["GET", "POST"])
-def sendPluginPage(pluginName):
-	if pluginName in enabledPlugins:
-		plugin = enabledPlugins[pluginName]
-		html = plugin.renderView(request.values)
-		return render_template('admin_plugin.html', plugin=plugin, pluginView=html, plugins=[enabledPlugins[p] for p in enabledPlugins])
-	return redirect(url_for('sendAdminDashboard'))
-
-@app.route("/admin/plugin/<pluginName>/data", methods=["GET", "POST"])
-def sentPluginData(pluginName):
-	if pluginName in enabledPlugins:
-		plugin = enabledPlugins[pluginName]
-		data = plugin.returnJsonData(request.values)
-		return jsonify(data)
-	return jsonify({})
-"""
-
-# ENDPOINTI PO DEFINICIJI V DATOTEKI README.md
+def error(number, message, icon="/images/default_error.png"):
+	return jsonify({
+		"error": number,
+		"message": message,
+		"icon": icon
+	})
 
 # Definiramo endpoint za obvestila
 @app.route("/obvestilo", methods=["GET"])
 def najdi_obvestila():
-	# Preberemo zadnji datum obvestila
-	zadnji_datum = request.args.get('od')
-
-	# Ce zadnjega datuma ni, potem vrnemo kar zadnje obvestilo
-	if zadnji_datum == None:
-		obvestilo = database.session.query(Obvestilo).order_by(Obvestilo.datum_objave.desc()).first()
-		return jsonify(obvestilo.toDictionary())
-
-	# Sicer pretvorimo datum iz oblike isoformat v datetime objekt
-	datum = dateutil.parser.parse(zadnji_datum)
-
-	# Sicer najdemo zadnje obvestilo po dolocenem datumu
-	obvestila = database.session.query(Obvestilo).filter(Obvestilo.datum_objave > datum)
-	obvestilo = obvestila.order_by(Obvestilo.datum_objave.desc()).first()
-	if obvestilo:
-		return jsonify(obvestilo.toDictionary())
-
-	# Vrnemo prazen objekt, obvestila ni
 	return jsonify(None)
 
 def izracunajPrioritetoInIkono(iskanaPostaja, imePostaje):
@@ -179,63 +91,80 @@ def seznam_postaj():
 # Definiramo endpoint za vozne rede
 @app.route("/vozni_red", methods=["GET"])
 def vozni_red():
-	# Ce datuma ni, vstavimo danasnji datum, sicer ga pretvorimo
 	vstopna_postaja = request.args.get('vstopna_postaja', None)
 	izstopna_postaja = request.args.get('izstopna_postaja', None)
+
+	if vstopna_postaja is None or izstopna_postaja is None:
+		return error(405, "Vstopna ali izstopna postaja je prazna")
+
+	# Ce datuma ni, vstavimo danasnji datum, sicer ga pretvorimo
 	datum = request.args.get('datum', None)
 
-	print("Request data: vstopna_postaja: {}, izstopna_postaja: {}, datum: {}".format(vstopna_postaja, izstopna_postaja, datum))
-
-	pretvorjen_datum = datetime.datetime.now()
+	pretvorjen_datum = datetime.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
 	if datum != None:
 		pretvorjen_datum = datetime.datetime.strptime(datum, "%d.%m.%Y")
 	else:
 		datum = pretvorjen_datum.strftime("%d.%m.%Y")
 
-	print("Search from {}: {} -> {}".format(request.remote_addr, vstopna_postaja, izstopna_postaja))
+	# Iskanje poteka po naslednjem postopku:
+	#   * najprej dodamo iskanje v bazo podatkov, skupaj s trenutnim casom
+	#   * ce vozni red na dolocen dan ze obstaja, ga neposredno vrnemo
+	#   * ce vozni red se ne obstaja, ga najprej prenesemo, dodamo v bazo in rezultat vrnemo
 
-	# Preverimo, ali je to iskanje ze v tabeli iskanj
-	zadetek = database.session.query(Iskanje).filter_by(vstopna_postaja=vstopna_postaja, izstopna_postaja=izstopna_postaja, datum=pretvorjen_datum.date()).first()
-	# Ce je zadetek ze v tabeli, ne prenasamo voznega reda temvec kar vrnemo te podatke
-	if zadetek != None:
-		print("Vozni red je ze najden")
-		vozni_red = [zadetek.toDictionary() for zadetek in zadetek.prevozi]
-		for prevoz in vozni_red:
-			prevoz["odhod"] = prevoz["odhod"].strftime("%H:%M")
-			prevoz["prihod"] = prevoz["prihod"].strftime("%H:%M")
-		return jsonify(vozni_red)
+	# V tabelo iskanj vstavimo trenutno iskanje, to potrebujemo zaradi statistike
+	iskanja.insert_one({
+		"vstopna_postaja": vstopna_postaja,
+		"izstopna_postaja": izstopna_postaja,
+		"datum": pretvorjen_datum,
+		"datum_iskanja": datetime.datetime.now()
+	})
 
-	iskanje = Iskanje(vstopna_postaja=vstopna_postaja, izstopna_postaja=izstopna_postaja, datum=pretvorjen_datum, datum_iskanja=datetime.datetime.utcnow())
+	# Poiscemo prevoz v mongo podatkovni bazi
+	najden_prevoz = prevozi.find_one({
+		"vstopna_postaja": vstopna_postaja,
+		"izstopna_postaja": izstopna_postaja,
+		"datum": pretvorjen_datum
+	})
 
+	if najden_prevoz:
+		# Prevoz je ze najden, vrnemo rezultat poizvedbe
+		# Tukaj pride do problema, ker ima prebran dokument iz mongo baze se id, ki ga je potrebno odstraniti
+		najden_prevoz.pop('_id')
+		# Drugi problem je cas pri prevozih, imamo ga namrec v datetime objektu, radi bi pa imeli niz "HH:MM"
+		for prevoz in najden_prevoz['vozni_red']:
+			prevoz['odhod'] = prevoz['odhod'].strftime('%H:%M')
+			prevoz['prihod'] = prevoz['prihod'].strftime('%H:%M')
+		# V trenutni razlicici se vrnemo seznam voznih redov, v prihodnosti bomo to zamenjali z najden_prevoz
+		return jsonify(najden_prevoz['vozni_red'])
+	
+	# Prevoza nismo se nasli v bazi, poiscemo ga
 	skupni_vozni_red = []
+
+	ustrezni_prevozniki = []
+	for prevoznik in prevozniki:
+		if prevoznik.obstajaPostaja(vstopna_postaja) and prevoznik.obstajaPostaja(izstopna_postaja):
+			ustrezni_prevozniki.append(prevoznik)
+
+	if len(ustrezni_prevozniki) <= 0:
+		return error(406, "Med izbranimi postajami ne vozi noben izmed prevoznikov")
+
+	# Nad vsemi objekti skupaj izvedemo iskanje, tako pohitrimo izvajanje
 	with ThreadPoolExecutor(max_workers=len(prevozniki)) as pool:
 		for prevoznik in prevozniki:
 			if prevoznik.obstajaPostaja(vstopna_postaja) and prevoznik.obstajaPostaja(izstopna_postaja):
 				rezultat = pool.submit(prevoznik.prenesiVozniRed, vstopna_postaja, izstopna_postaja, pretvorjen_datum)
 				skupni_vozni_red.extend(rezultat.result())
 
-	# Uredimo vozni red po datumih
+	# Prenesli smo vse vozne rede prevoznikov, uredimo jih po uri odhoda
 	skupni_vozni_red.sort(key=lambda x: x["odhod"])
 
-	# Dodamo prevoze pod iskanje v bazo podatkov
-	for prevoz in skupni_vozni_red:
-		prevozTabela = Prevoz(
-			prihod=prevoz["prihod"],
-			odhod=prevoz["odhod"],
-			peron=prevoz["peron"],
-			prevoznik=prevoz["prevoznik"],
-			cena=prevoz["cena"],
-			razdalja=prevoz["razdalja"]
-		)
-		iskanje.prevozi.append(prevozTabela)
-
-	database.session.add(iskanje)
-	database.session.commit()
-
-	# Spremenimo ure nazaj v normalno obliko
-	for prevoz in skupni_vozni_red:
-		prevoz["odhod"] = prevoz["odhod"].strftime("%H:%M")
-		prevoz["prihod"] = prevoz["prihod"].strftime("%H:%M")
+	# V bazo dodamo rezultat iskanja pod nov objekt
+	prevozi.insert_one({
+		"vstopna_postaja": vstopna_postaja,
+		"izstopna_postaja": izstopna_postaja,
+		"datum": pretvorjen_datum,
+		"vozni_red": skupni_vozni_red
+	})
 
 	return jsonify(skupni_vozni_red)
 
