@@ -149,11 +149,10 @@ def vozni_red():
 		return error(406, "Med izbranimi postajami ne vozi noben izmed prevoznikov")
 
 	# Nad vsemi objekti skupaj izvedemo iskanje, tako pohitrimo izvajanje
-	with ThreadPoolExecutor(max_workers=len(prevozniki)) as pool:
-		for prevoznik in prevozniki:
-			if prevoznik.obstajaPostaja(vstopna_postaja) and prevoznik.obstajaPostaja(izstopna_postaja):
-				rezultat = pool.submit(prevoznik.prenesiVozniRed, vstopna_postaja, izstopna_postaja, pretvorjen_datum)
-				skupni_vozni_red.extend(rezultat.result())
+	with ThreadPoolExecutor(max_workers=len(ustrezni_prevozniki)) as pool:
+		for prevoznik in ustrezni_prevozniki:
+			rezultat = pool.submit(prevoznik.prenesiVozniRed, vstopna_postaja, izstopna_postaja, pretvorjen_datum)
+			skupni_vozni_red.extend(rezultat.result())
 
 	# Prenesli smo vse vozne rede prevoznikov, uredimo jih po uri odhoda
 	skupni_vozni_red.sort(key=lambda x: x["odhod"])
@@ -165,6 +164,10 @@ def vozni_red():
 		"datum": pretvorjen_datum,
 		"vozni_red": skupni_vozni_red
 	})
+
+	for prevoz in najden_prevoz['vozni_red']:
+		prevoz['odhod'] = prevoz['odhod'].strftime('%H:%M')
+		prevoz['prihod'] = prevoz['prihod'].strftime('%H:%M')
 
 	return jsonify(skupni_vozni_red)
 
