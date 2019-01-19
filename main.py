@@ -5,14 +5,18 @@ import glob, os, importlib, inspect
 
 from concurrent.futures import ThreadPoolExecutor
 
+import sys
+
 # Moji importi
 from plugins.models import Base, Obvestilo, Iskanje, Prevoz
 from prevozniki.avrigo import Avrigo
 from prevozniki.alpetour import Alpetour
 from prevozniki.apms import AvtobusniPrevozMurskaSobota
+from prevozniki.apljubljana import APLjubljana
+from prevozniki.arriva import Arriva
 
 # Ustvarimo instanco flask razreda
-app = Flask(__name__)
+app = Flask(__name__, static_url_path='')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
 database = SQLAlchemy(app)
 
@@ -20,7 +24,7 @@ database = SQLAlchemy(app)
 iskanja = {}
 
 # Ustvarimo objekte, za prenos podatkov o voznih redih
-prevozniki = [Avrigo(), Alpetour(), AvtobusniPrevozMurskaSobota()]
+prevozniki = [Avrigo(), Alpetour(), AvtobusniPrevozMurskaSobota(), Arriva(), APLjubljana()]
 
 @app.before_first_request
 def setup():
@@ -66,7 +70,7 @@ def importPlugin(pluginPath):
 		return pluginObject
 
 # Import plugins
-print("Importing plugins")
+"""print("Importing plugins")
 for pluginPath in availablePlugins:
 	pluginName = getPluginName(pluginPath)
 	# Create plugin object
@@ -93,7 +97,7 @@ def sentPluginData(pluginName):
 		data = plugin.returnJsonData(request.values)
 		return jsonify(data)
 	return jsonify({})
-
+"""
 
 # ENDPOINTI PO DEFINICIJI V DATOTEKI README.md
 
@@ -120,13 +124,57 @@ def najdi_obvestila():
 	# Vrnemo prazen objekt, obvestila ni
 	return jsonify(None)
 
+def izracunajPrioritetoInIkono(iskanaPostaja, imePostaje):
+	prioriteta = 0
+	ikona = None
+	if "AP" in imePostaje:
+		prioriteta = 20
+		ikona = "/images/bus.png"
+	elif "ŽP" in imePostaje:
+		prioriteta = 20
+		ikona = "/images/train.png"
+	elif "pri" not in imePostaje and "/" not in imePostaje:
+		prioriteta = 1
+	if len(imePostaje) > 0:
+		prioriteta  += int((len(iskanaPostaja) / len(imePostaje)) * 5)
+	return {
+		"prioriteta": prioriteta,
+		"ikona": ikona
+	}
+
 # Definiramo endpoint za seznam postaj
 @app.route("/postaja", methods=["GET"])
 def seznam_postaj():
-	vse_postaje = set()
+	iskanje = request.args.get('iskanje')
+	limit = request.args.get('limit')
+
+	skupne_postaje_prevozniki = {}
 	for prevoznik in prevozniki:
-		vse_postaje = vse_postaje.union(set(prevoznik.seznamPostaj()))
-	return jsonify(sorted(list(vse_postaje)))
+		prevoznik_postaje = prevoznik.seznamPostaj()
+		if iskanje:
+			prevoznik_postaje = filter(lambda ime: iskanje.lower() in ime.lower(), prevoznik_postaje)
+		for postaja in prevoznik_postaje:
+			if postaja not in skupne_postaje_prevozniki:
+				skupne_postaje_prevozniki[postaja] = []
+			skupne_postaje_prevozniki[postaja].append(prevoznik.__class__.__name__)
+
+	imena_postaj = skupne_postaje_prevozniki.keys()
+	vse_postaje = [{
+		"ime": postaja,
+		"prevozniki": skupne_postaje_prevozniki[postaja],
+		"prioriteta": izracunajPrioritetoInIkono(iskanje, postaja)["prioriteta"],
+		"ikona": izracunajPrioritetoInIkono(iskanje, postaja)["ikona"]
+	} for postaja in imena_postaj]
+
+	vse_postaje.sort(key=lambda postaja: postaja["prioriteta"], reverse=True)
+
+	try:
+		praviLimit = int(limit)
+		vse_postaje = vse_postaje[0:praviLimit]
+	except Exception:
+		pass
+
+	return jsonify(vse_postaje)
 
 # Definiramo endpoint za vozne rede
 @app.route("/vozni_red", methods=["GET"])
@@ -192,4 +240,7 @@ def vozni_red():
 	return jsonify(skupni_vozni_red)
 
 if __name__ == '__main__':
-	app.run(host="0.0.0.0", port=7000, debug=False, threaded=True)
+	port = 7000
+	if len(sys.argv) >= 2:
+		port = int(sys.argv[1])
+	app.run(host="0.0.0.0", port=port, debug=True, threaded=True)
