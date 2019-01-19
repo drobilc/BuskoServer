@@ -1,7 +1,15 @@
 # Busko server
-Busko server je strežnik, ki ga aplikacija [Busko](https://play.google.com/store/apps/details?id=com.drobilc.busko) uporablja za komunikacijo s spletno stranjo prevoznika [Nomago](https://www.avrigo.si/sl/).
+Busko server je API, kiga ga aplikacija [Busko](https://play.google.com/store/apps/details?id=com.drobilc.busko) uporablja za prenos voznih redov slovenskih avtobusnih ponudnikov.
+
+Trenutno podpira naslednje prevoznike:
+* [Arriva](http://arriva.si/)
+* [Avrigo (po novem Nomago)](http://avrigo.si)
+* [Alpetour](https://www.alpetour.si/)
+* [Avtobusni promet Murska Sobota](https://www.apms.si)
+* [Avtobusna postaja Ljubljana](https://www.ap-ljubljana.si/)
 
 ## Namestitev
+Preden namestimo BuskoServer je potrebno namestiti še podatkovno bazo **Mongo**. To storimo tako, da sledimo uradnim navodilom na [uradni spletni strani](https://docs.mongodb.com/manual/installation/).
 Za namestitev strežnika poženite naslednje ukaze:
 ```
 git clone https://github.com/drobilc/BuskoServer.git
@@ -13,7 +21,7 @@ pip install -r requirements.txt
 python main.py
 ```
 
-## Server
+## API
 Server podatke pošilja v obliki *JSON*.
 Spodaj bodo opisani vsi endpointi, do katerih lahko uporabniki dostopajo.
 
@@ -93,6 +101,5 @@ Datoteka naj vsebuje razred z imenom prevoznika, ta pa naj deduje od razreda `pr
 Potrebno je napisati tri funkcije in sicer:
 * `seznamPostaj` - vrne seznam (list) postaj ki jih ta prevoznik ponuja
 * `obstajaPostaja(imePostaje)` - vrne `True` v primeru da postaja obstaja, sicer `False`
-* `prenesiVozniRed(vstopnaPostaja, izstopnaPostaja, datum)` - vrne seznam slovarjev, pri katerem vsak slovar vsebuje ključe `prihod`, `odhod`, `trajanje`, `peron`, `prevoznik`, `cena`, `razdalja`, `url`.
-Vstopna in izstopna postaja sta niza, datum pa je objekt tipa `datetime`.
-`odhod` in `prihod` morata biti obvezno objekta tipa `datetime`.
+* `prenesiVozniRed(vstopnaPostaja, izstopnaPostaja, datum)` - vrne seznam slovarjev, pri katerem vsak slovar vsebuje ključe `prihod`, `odhod`, `trajanje`, `peron`, `prevoznik`, `cena`, `razdalja`. Vsebuje lahko še poljubno število dodatnih atributov.
+Vstopna in izstopna postaja sta niza, datum pa je objekt tipa `datetime`. `odhod` in `prihod` morata biti obvezno objekta tipa `datetime`.
