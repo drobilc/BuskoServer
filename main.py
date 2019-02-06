@@ -152,7 +152,13 @@ def vozni_red():
 	with ThreadPoolExecutor(max_workers=len(ustrezni_prevozniki)) as pool:
 		for prevoznik in ustrezni_prevozniki:
 			rezultat = pool.submit(prevoznik.prenesiVozniRed, vstopna_postaja, izstopna_postaja, pretvorjen_datum)
-			skupni_vozni_red.extend(rezultat.result())
+			najdeni_prevozi = rezultat.result()
+
+			# Vsakemo prevozu dodamo se ime internega razreda za pretvorbo nazaj ce bo potrebno
+			for prevoz in najdeni_prevozi:
+				prevoz["_prevoznik"] = type(prevoznik).__name__
+			
+			skupni_vozni_red.extend(najdeni_prevozi)
 
 	# Prenesli smo vse vozne rede prevoznikov, uredimo jih po uri odhoda
 	skupni_vozni_red.sort(key=lambda x: x["odhod"])

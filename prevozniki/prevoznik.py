@@ -13,3 +13,15 @@ class Prevoznik(object):
 	def prenesiVozniRed(self, vstopnaPostaja, izstopnaPostaja, datum):
 		"""Vrne vozni red med izbranima postajama za datum datum"""
 		return []
+
+	def vmesnePostaje(self, prevoz):
+		"""Vrne vmesne postaje na izbrani relaciji"""
+		"""
+		Oblika:
+		{
+			"postaja": "...",
+			"cas_prihoda": "..."
+		}
+		"""
+		
+		return []

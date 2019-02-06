@@ -35,13 +35,13 @@ class APLjubljana(Prevoznik):
 		if type(datum) is datetime.datetime:
 			datum = datum.strftime("%d.%m.%Y")
 		url = "https://www.ap-ljubljana.si/_vozni_red/get_vozni_red_0.php"
-		repsonse = self.seja.post(url, data={
+		response = self.seja.post(url, data={
 			"VSTOP_ID": self.postajaId(vstopnaPostaja),
 			"IZSTOP_ID": self.postajaId(izstopnaPostaja),
 			"DATUM": datum
 		})
 		prevozi = []
-		for vrstica in repsonse.text.split("\n"):
+		for vrstica in response.text.split("\n"):
 			podatki = vrstica.split("|")
 			if len(podatki) < 2:
 				continue
@@ -51,6 +51,7 @@ class APLjubljana(Prevoznik):
 			cena = podatki[9]
 			uraPrihoda = datetime.datetime.strptime(prihod, "%Y-%m-%d %H:%M:%S")
 			uraOdhoda = datetime.datetime.strptime(odhod, "%Y-%m-%d %H:%M:%S")
+			dodatniPodatki = podatki[-1]
 			prevoz = {
 				"prihod": uraPrihoda,
 				"odhod": uraOdhoda,
@@ -59,11 +60,30 @@ class APLjubljana(Prevoznik):
 				"prevoznik": "AP LJUBLJANA",
 				"cena": "{} EUR".format(cena),
 				"razdalja": "/",
-				"url": ""
+				"url": "",
+				"vmesne_postaje_data": dodatniPodatki
 			}
 			prevozi.append(prevoz)
 		return prevozi
 
+	def vmesnePostaje(self, prevoz):
+		url = "https://www.ap-ljubljana.si/_vozni_red/get_linija_info_0.php"
+		response = self.seja.post(url, data={
+			"flags": prevoz['vmesne_postaje_data']
+		})
+		relacije = []
+		for vrstica in response.text.split("\n")[1:]:
+			podatki = vrstica.split("|")
+			if len(podatki) < 2:
+				continue
+			postaja = podatki[1]
+			cas = datetime.datetime.strptime(podatki[2], "%Y-%m-%d %H:%M:%S")
+			relacije.append({
+				"postaja": postaja,
+				"cas_prihoda": cas
+			})
+		return relacije
+
 if __name__ == "__main__":
 	ap = APLjubljana()
-	print(ap.prenesiVozniRed("LJUBLJANA AVTOBUSNA POSTAJA", "Velenje", datetime.datetime.now()))
+	prevozi = ap.prenesiVozniRed("Nova Gorica", "LJUBLJANA AVTOBUSNA POSTAJA", datetime.datetime.now())
