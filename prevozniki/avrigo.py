@@ -105,3 +105,41 @@ class Avrigo(Prevoznik):
 			prevoziPodatki.append(slovarPodatkov)
 
 		return prevoziPodatki
+
+	def vmesnePostaje(self, prevoz):
+		vmesne_postaje = []
+
+		# Url pridobimo iz prevoza
+		response = self.seja.get(prevoz["url"])
+
+		# Avrigo nam vrne json rezultat, v katerem je html, kar je neumno, a deluje
+		html = BeautifulSoup(response.json()["html"], "html.parser")
+
+		# Najdemo tabelo in vrstice
+		tabela = html.find("table", {"id": "Table1"})
+		vrstice = tabela.find_all("tr")
+		
+		for vrstica in vrstice:
+			# Najdemo stolpce v vsaki vrstici
+			stolpci = vrstica.find_all("td", {"class": "TabelaPostaje"})
+			if len(stolpci) < 4:
+				continue
+
+			# Preberemo le besedilo iz stolpcev
+			podatki = [stolpec.text for stolpec in stolpci] 
+
+			# Vse ure pripisemo pravemu datumu
+			# TODO: ce je avtobus tak, da se vozi dva dni, potem je tukaj malo problematicno
+			datumPrihoda = prevoz['odhod']
+			try:
+				uraPrihoda = datetime.datetime.strptime(podatki[1], "%H:%M")
+				datumPrihoda = datumPrihoda.replace(hour=uraPrihoda.hour, minute=uraPrihoda.minute)
+			except Exception:
+				pass
+
+			vmesne_postaje.append({
+				"postaja": podatki[0], # ime postaje
+				"cas_prihoda": datumPrihoda
+			})
+
+		return vmesne_postaje

@@ -83,7 +83,3 @@ class APLjubljana(Prevoznik):
 				"cas_prihoda": cas
 			})
 		return relacije
-
-if __name__ == "__main__":
-	ap = APLjubljana()
-	prevozi = ap.prenesiVozniRed("Nova Gorica", "LJUBLJANA AVTOBUSNA POSTAJA", datetime.datetime.now())
