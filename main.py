@@ -217,6 +217,11 @@ def prevoz():
 
 	# V primeru, da smo postaje ze prenesli, lahko objekt kar vrnemo
 	if 'vmesne_postaje' in najden_prevoz:
+		for postaja in najden_prevoz['vmesne_postaje']:
+			postaja['cas_prihoda'] = postaja['cas_prihoda'].strftime('%H:%M')
+
+		najden_prevoz['odhod'] = najden_prevoz['odhod'].strftime('%H:%M')
+		najden_prevoz['prihod'] = najden_prevoz['prihod'].strftime('%H:%M')
 		return jsonify(najden_prevoz)
 
 	# Ce prevoznik obstaja, najdemo vmesne postaje
