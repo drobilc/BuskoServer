@@ -9,7 +9,6 @@ from concurrent.futures import ThreadPoolExecutor
 
 # Moji importi
 from prevozniki.avrigo import Avrigo
-from prevozniki.alpetour import Alpetour
 from prevozniki.apms import AvtobusniPrevozMurskaSobota
 from prevozniki.apljubljana import APLjubljana
 from prevozniki.arriva import Arriva
@@ -17,8 +16,15 @@ from prevozniki.arriva import Arriva
 class CustomJSONEncoder(JSONEncoder):
 
 	def default(self, obj):
+
+		# Mongo idje pretvorimo v nize
 		if isinstance(obj, ObjectId):
 			return str(obj)
+
+		# Datume pretvorimo v ISO 8601
+		if isinstance(obj, datetime.datetime):
+			return obj.isoformat()
+
 		return JSONEncoder.default(self, obj)
 
 # Ustvarimo instanco flask razreda
@@ -36,7 +42,7 @@ prevozi = database.prevozi
 iskanja = database.iskanja
 
 # Ustvarimo objekte, za prenos podatkov o voznih redih
-prevozniki = [Avrigo(), Alpetour(), AvtobusniPrevozMurskaSobota(), APLjubljana(), Arriva()]
+prevozniki = [Avrigo(), AvtobusniPrevozMurskaSobota(), APLjubljana(), Arriva()]
 
 # V slovarju prevoznikov imamo prevoznike shranjene glede na imena razredov
 slovar_prevozniki = {}
@@ -51,7 +57,7 @@ def error(number, message, icon="/images/default_error.png"):
 	})
 
 # Definiramo endpoint za obvestila
-@app.route("/obvestilo", methods=["GET"])
+@app.route("/api/v2/obvestilo", methods=["GET"])
 def najdi_obvestila():
 	return jsonify(None)
 
@@ -74,7 +80,7 @@ def izracunajPrioritetoInIkono(iskanaPostaja, imePostaje):
 	}
 
 # Definiramo endpoint za seznam postaj
-@app.route("/postaja", methods=["GET"])
+@app.route("/api/v2/postaja", methods=["GET"])
 def seznam_postaj():
 	iskanje = request.args.get('iskanje')
 	limit = request.args.get('limit')
@@ -108,7 +114,7 @@ def seznam_postaj():
 	return jsonify(vse_postaje)
 
 # Definiramo endpoint za vozne rede
-@app.route("/vozni_red", methods=["GET"])
+@app.route("/api/v2/vozni_red", methods=["GET"])
 def vozni_red():
 	vstopna_postaja = request.args.get('vstopna_postaja', None)
 	izstopna_postaja = request.args.get('izstopna_postaja', None)
@@ -156,13 +162,6 @@ def vozni_red():
 		najdeni_prevozi = list(najdeni_prevozi)
 		# Prevoz je ze najden, vrnemo rezultat poizvedbe
 		# Drugi problem je cas pri prevozih, imamo ga namrec v datetime objektu, radi bi pa imeli niz "HH:MM"
-		for prevoz in najdeni_prevozi:
-			prevoz['odhod'] = prevoz['odhod'].strftime('%H:%M')
-			prevoz['prihod'] = prevoz['prihod'].strftime('%H:%M')
-			if 'vmesne_postaje' not in prevoz:
-				continue
-			for postaja in prevoz['vmesne_postaje']:
-				postaja['cas_prihoda'] = postaja['cas_prihoda'].strftime('%H:%M')
 		return jsonify(najdeni_prevozi)
 	
 	# Prevoza nismo se nasli v bazi, poiscemo ga
@@ -198,17 +197,9 @@ def vozni_red():
 
 	prevozi.insert_many(skupni_vozni_red)
 
-	for prevoz in skupni_vozni_red:
-		prevoz['odhod'] = prevoz['odhod'].strftime('%H:%M')
-		prevoz['prihod'] = prevoz['prihod'].strftime('%H:%M')
-		if 'vmesne_postaje' not in prevoz:
-			continue
-		for postaja in prevoz['vmesne_postaje']:
-			postaja['cas_prihoda'] = postaja['cas_prihoda'].strftime('%H:%M')
-
 	return jsonify(skupni_vozni_red)
 
-@app.route("/prevoz", methods=["GET"])
+@app.route("/api/v2/prevoz", methods=["GET"])
 def prevoz():
 	# Preberemo id prevoza, ki ga uporabnik isce
 	prevoz_id = request.args.get('id', None)
@@ -225,11 +216,6 @@ def prevoz():
 
 	# V primeru, da smo postaje ze prenesli, lahko objekt kar vrnemo
 	if 'vmesne_postaje' in najden_prevoz:
-		for postaja in najden_prevoz['vmesne_postaje']:
-			postaja['cas_prihoda'] = postaja['cas_prihoda'].strftime('%H:%M')
-
-		najden_prevoz['odhod'] = najden_prevoz['odhod'].strftime('%H:%M')
-		najden_prevoz['prihod'] = najden_prevoz['prihod'].strftime('%H:%M')
 		return jsonify(najden_prevoz)
 
 	# Ce prevoznik obstaja, najdemo vmesne postaje
@@ -240,13 +226,6 @@ def prevoz():
 	
 	# Objekt shranimo nazaj v podatkovno bazo
 	prevozi.save(najden_prevoz)
-
-	# Case pretvorimo iz datetime objekta v niz
-	for postaja in vmesne_postaje:
-		postaja['cas_prihoda'] = postaja['cas_prihoda'].strftime('%H:%M')
-
-	najden_prevoz['odhod'] = najden_prevoz['odhod'].strftime('%H:%M')
-	najden_prevoz['prihod'] = najden_prevoz['prihod'].strftime('%H:%M')
 
 	return jsonify(najden_prevoz)
 
