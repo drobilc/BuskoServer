@@ -1,8 +1,10 @@
 from flask import Flask, request, jsonify, render_template
+from flask.json import JSONEncoder
 import datetime, dateutil.parser
 import glob, os, importlib, inspect
 import sys
 from pymongo import MongoClient
+from bson.objectid import ObjectId
 from concurrent.futures import ThreadPoolExecutor
 
 # Moji importi
@@ -12,17 +14,34 @@ from prevozniki.apms import AvtobusniPrevozMurskaSobota
 from prevozniki.apljubljana import APLjubljana
 from prevozniki.arriva import Arriva
 
+class CustomJSONEncoder(JSONEncoder):
+
+	def default(self, obj):
+		if isinstance(obj, ObjectId):
+			return str(obj)
+		return JSONEncoder.default(self, obj)
+
 # Ustvarimo instanco flask razreda
 app = Flask(__name__, static_url_path='')
+app.json_encoder = CustomJSONEncoder
 
 # Povezemo se na bazo podatkov
 client = MongoClient('localhost', 27017)
 database = client.busko
+
+# V tabeli prevozi hranimo vse podatke o prevozih
 prevozi = database.prevozi
+
+# V tabeli iskanja hranimo vsako iskanje uporabnikov za analize
 iskanja = database.iskanja
 
 # Ustvarimo objekte, za prenos podatkov o voznih redih
-prevozniki = [Avrigo(), Alpetour(), AvtobusniPrevozMurskaSobota(), Arriva(), APLjubljana()]
+prevozniki = [Avrigo(), Alpetour(), AvtobusniPrevozMurskaSobota(), APLjubljana(), Arriva()]
+
+# V slovarju prevoznikov imamo prevoznike shranjene glede na imena razredov
+slovar_prevozniki = {}
+for prevoznik in prevozniki:
+	slovar_prevozniki[type(prevoznik).__name__] = prevoznik
 
 def error(number, message, icon="/images/default_error.png"):
 	return jsonify({
@@ -119,23 +138,28 @@ def vozni_red():
 		"datum_iskanja": datetime.datetime.now()
 	})
 
-	# Poiscemo prevoz v mongo podatkovni bazi
-	najden_prevoz = prevozi.find_one({
-		"vstopna_postaja": vstopna_postaja,
-		"izstopna_postaja": izstopna_postaja,
-		"datum": pretvorjen_datum
+	# Poiscemo konec dneva
+	konec_dneva = pretvorjen_datum + datetime.timedelta(days=1)
+	konec_dneva.replace(hour=0, minute=0, second=0, microsecond=0) 
+	
+	# V bazi podatkov poiscemo vse prevoze ki so med datumom in koncem dneva
+	najdeni_prevozi = prevozi.find({
+		"$and": [
+			{"vstopna_postaja": vstopna_postaja},
+			{"izstopna_postaja": izstopna_postaja},
+			{"odhod": {"$gt": pretvorjen_datum}},
+			{"odhod": {"$lt": konec_dneva}}
+		]
 	})
 
-	if najden_prevoz:
+	if najdeni_prevozi.count() > 0:
+		najdeni_prevozi = list(najdeni_prevozi)
 		# Prevoz je ze najden, vrnemo rezultat poizvedbe
-		# Tukaj pride do problema, ker ima prebran dokument iz mongo baze se id, ki ga je potrebno odstraniti
-		najden_prevoz.pop('_id')
 		# Drugi problem je cas pri prevozih, imamo ga namrec v datetime objektu, radi bi pa imeli niz "HH:MM"
-		for prevoz in najden_prevoz['vozni_red']:
+		for prevoz in najdeni_prevozi:
 			prevoz['odhod'] = prevoz['odhod'].strftime('%H:%M')
 			prevoz['prihod'] = prevoz['prihod'].strftime('%H:%M')
-		# V trenutni razlicici se vrnemo seznam voznih redov, v prihodnosti bomo to zamenjali z najden_prevoz
-		return jsonify(najden_prevoz['vozni_red'])
+		return jsonify(najdeni_prevozi)
 	
 	# Prevoza nismo se nasli v bazi, poiscemo ga
 	skupni_vozni_red = []
@@ -157,25 +181,61 @@ def vozni_red():
 			# Vsakemo prevozu dodamo se ime internega razreda za pretvorbo nazaj ce bo potrebno
 			for prevoz in najdeni_prevozi:
 				prevoz["_prevoznik"] = type(prevoznik).__name__
+				prevoz["_id"] = ObjectId()
 			
 			skupni_vozni_red.extend(najdeni_prevozi)
 
 	# Prenesli smo vse vozne rede prevoznikov, uredimo jih po uri odhoda
 	skupni_vozni_red.sort(key=lambda x: x["odhod"])
 
-	# V bazo dodamo rezultat iskanja pod nov objekt
-	prevozi.insert_one({
-		"vstopna_postaja": vstopna_postaja,
-		"izstopna_postaja": izstopna_postaja,
-		"datum": pretvorjen_datum,
-		"vozni_red": skupni_vozni_red
-	})
+	for prevoz in skupni_vozni_red:
+		prevoz["vstopna_postaja"] = vstopna_postaja
+		prevoz["izstopna_postaja"] = izstopna_postaja
+
+	prevozi.insert_many(skupni_vozni_red)
 
 	for prevoz in skupni_vozni_red:
 		prevoz['odhod'] = prevoz['odhod'].strftime('%H:%M')
 		prevoz['prihod'] = prevoz['prihod'].strftime('%H:%M')
 
 	return jsonify(skupni_vozni_red)
+
+@app.route("/prevoz", methods=["GET"])
+def prevoz():
+	# Preberemo id prevoza, ki ga uporabnik isce
+	prevoz_id = request.args.get('id', None)
+
+	# V podatkovni bazi poiscemo objekt prevoza glede na id
+	najden_prevoz = prevozi.find_one({"_id": ObjectId(prevoz_id)})
+
+	if not najden_prevoz:
+		return error(404, "Prevoz z vpisanim identifikatorjem ne obstaja")
+
+	# Preverimo ali obstaja prevoznik v slovarju prevoznikov
+	if najden_prevoz['_prevoznik'] not in slovar_prevozniki:
+		return error(502, "Prevoznik ne obstaja")
+
+	# V primeru, da smo postaje ze prenesli, lahko objekt kar vrnemo
+	if 'vmesne_postaje' in najden_prevoz:
+		return jsonify(najden_prevoz)
+
+	# Ce prevoznik obstaja, najdemo vmesne postaje
+	vmesne_postaje = slovar_prevozniki[najden_prevoz['_prevoznik']].vmesnePostaje(najden_prevoz)
+
+	# Objektu dodamo seznam vmesnih postaj
+	najden_prevoz['vmesne_postaje'] = vmesne_postaje
+	
+	# Objekt shranimo nazaj v podatkovno bazo
+	prevozi.save(najden_prevoz)
+
+	# Case pretvorimo iz datetime objekta v niz
+	for postaja in vmesne_postaje:
+		postaja['cas_prihoda'] = postaja['cas_prihoda'].strftime('%H:%M')
+
+	najden_prevoz['odhod'] = najden_prevoz['odhod'].strftime('%H:%M')
+	najden_prevoz['prihod'] = najden_prevoz['prihod'].strftime('%H:%M')
+
+	return jsonify(najden_prevoz)
 
 if __name__ == '__main__':
 	port = 7000
