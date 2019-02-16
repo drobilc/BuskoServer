@@ -82,6 +82,12 @@ class Arriva(Prevoznik):
 
 			dodatni_podatki = prevoz_div.find("div", {"class": "display-path"})["data-args"]
 
+			if len(prevoznik) > 20:
+				if " " in prevoznik:
+					prevoznik = prevoznik.split(" ")[0]
+				else:
+					prevoznik = "{}...".format(prevoznik[0:17])
+
 			vsi_prevozi.append({
 				"prihod": prihod,
 				"odhod": odhod,
