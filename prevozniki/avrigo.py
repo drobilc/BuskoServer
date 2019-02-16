@@ -90,18 +90,33 @@ class Avrigo(Prevoznik):
 				potUrl = "http://voznired.avrigo.si/PotekVoznje.aspx?REG_ISIF={}&OVR_SIF={}&LIS_ZAPZ={}&LIS_ZAPK={}&VVLN_ZL={}".format(izlusceni_podatki[1], izlusceni_podatki[2], izlusceni_podatki[3], izlusceni_podatki[4], izlusceni_podatki[5])
 		
 			slovarPodatkov = dict(zip(nasloviVrstic, besediloStolpcev))
-			slovarPodatkov["url"] = potUrl
+			slovarPodatkov["_url"] = potUrl
 			
 			# Ura prihoda in odhoda morata biti v datetime obliki
 			uraPrihoda = datetime.datetime.strptime(slovarPodatkov["prihod"], "%H:%M")
 			casPrihoda = datum.replace(hour=uraPrihoda.hour, minute=uraPrihoda.minute)
-			slovarPodatkov["prihod"] = casPrihoda
 
 			uraOdhoda = datetime.datetime.strptime(slovarPodatkov["odhod"], "%H:%M")
 			casOdhoda = datum.replace(hour=uraOdhoda.hour, minute=uraOdhoda.minute)
-			slovarPodatkov["odhod"] = casOdhoda
 
-			#slovarPodatkov["prihod"] = 
+			# Preverimo ali je ura prihoda pred uro odhoda, saj je to nemogoce
+			# Ce se to zgodi, pristejemo casu prihoda 1 dan
+			if uraOdhoda > uraPrihoda:
+				casPrihoda = casPrihoda + datetime.timedelta(days = 1)
+
+			slovarPodatkov["odhod"] = casOdhoda
+			slovarPodatkov["prihod"] = casPrihoda
+
+			# Spustimo podatke, ki jih ne potrebujemo
+			del slovarPodatkov["trajanje"]
+
+			# Popravimo razdaljo in ceno v stevila
+			slovarPodatkov["cena"] = slovarPodatkov["cena"].replace("EUR", "").strip().replace(",", ".")
+			slovarPodatkov["cena"] = float(slovarPodatkov["cena"])
+
+			slovarPodatkov["razdalja"] = slovarPodatkov["razdalja"].replace("km", "").strip()
+			slovarPodatkov["razdalja"] = float(slovarPodatkov["razdalja"])
+
 			prevoziPodatki.append(slovarPodatkov)
 
 		return prevoziPodatki
@@ -110,7 +125,7 @@ class Avrigo(Prevoznik):
 		vmesne_postaje = []
 
 		# Url pridobimo iz prevoza
-		response = self.seja.get(prevoz["url"])
+		response = self.seja.get(prevoz["_url"])
 
 		# Avrigo nam vrne json rezultat, v katerem je html, kar je neumno, a deluje
 		html = BeautifulSoup(response.json()["html"], "html.parser")
@@ -134,6 +149,9 @@ class Avrigo(Prevoznik):
 			try:
 				uraPrihoda = datetime.datetime.strptime(podatki[1], "%H:%M")
 				datumPrihoda = datumPrihoda.replace(hour=uraPrihoda.hour, minute=uraPrihoda.minute)
+
+				if datumPrihoda < prevoz['odhod']:
+					datumPrihoda = datumPrihoda + datetime.timedelta(days = 1)
 			except Exception:
 				pass
 
