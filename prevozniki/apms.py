@@ -33,28 +33,32 @@ class AvtobusniPrevozMurskaSobota(Prevoznik):
 	def prenesiVozniRed(self, vstopnaPostaja, izstopnaPostaja, datum):
 		podatki = self.prenesiSurovePodatke(vstopnaPostaja, izstopnaPostaja, datum)
 		prevoziPodatki = []
+		
 		if podatki == None:
 			return prevoziPodatki
+
 		for vrstica in podatki:
+
 			uraPrihoda = datetime.datetime.strptime(vrstica["prihod"], "%H:%M")
 			uraOdhoda = datetime.datetime.strptime(vrstica["odhod"], "%H:%M")
+
+			# Cas prihoda in odhoda izracunamo glede na trenutni datum in vrnjeno uro
 			casPrihoda = datum.replace(hour=uraPrihoda.hour, minute=uraPrihoda.minute)
 			casOdhoda = datum.replace(hour=uraOdhoda.hour, minute=uraOdhoda.minute)
+			
+			# Ceno prevoza in razdaljo vrnemo kot decimalno stevilo
+			cena = float(vrstica["cena"].strip())
+			razdalja = float(vrstica["km"])
+
 			prevoz = {
 				"prihod": casPrihoda,
 				"odhod": casOdhoda,
-				"trajanje": vrstica["voznja"],
 				"peron": "",
 				"prevoznik": vrstica["prevoznik"],
-				"cena": "{} EUR".format(vrstica["cena"].strip()),
-				"razdalja": "{} km".format(vrstica["km"]),
-				"url": ""
+				"cena": cena,
+				"razdalja": razdalja
 			}
-			if len(prevoz["prevoznik"]) > 20:
-				prevoz["prevoznik"] = "AP Murska Sobota"
-			prevoziPodatki.append(prevoz)
-		return prevoziPodatki
 
-if __name__ == "__main__":
-	bus = AvtobusniPrevozMurskaSobota()
-	print(bus.prenesiVozniRed("Ljubljana AP", "Murska Sobota AP", datetime.datetime.now()))
+			prevoziPodatki.append(prevoz)
+
+		return prevoziPodatki
