@@ -72,7 +72,10 @@ class Arriva(Prevoznik):
 			razdalja = prevoz_div.find("div", {"class": "length"}).text
 			cena = prevoz_div.find("div", {"class": "price"}).text
 			prevoznik = prevoz_div.find("div", {"class": "prevoznik"}).find_all("span")[-1].text
-			trajanje = prevoz_div.find("div", {"class": "travel-duration"}).text.strip()
+
+			# Popravimo ceno in razdaljo v stevila
+			cena = float(cena.replace("EUR", "").strip())
+			razdalja = float(razdalja.replace("km", "").strip())
 
 			uraPrihoda = datetime.datetime.strptime(prihod, "%H:%M")
 			uraOdhoda = datetime.datetime.strptime(odhod, "%H:%M")
@@ -80,23 +83,20 @@ class Arriva(Prevoznik):
 			prihod = datum.replace(hour=uraPrihoda.hour, minute=uraPrihoda.minute)
 			odhod = datum.replace(hour=uraOdhoda.hour, minute=uraOdhoda.minute)
 
-			dodatni_podatki = prevoz_div.find("div", {"class": "display-path"})["data-args"]
+			# Preverimo ali se je vmes zamenjal dan
+			if prihod < odhod:
+				prihod = prihod + datetime.timedelta(days = 1)
 
-			if len(prevoznik) > 20:
-				if " " in prevoznik:
-					prevoznik = prevoznik.split(" ")[0]
-				else:
-					prevoznik = "{}...".format(prevoznik[0:17])
+			dodatni_podatki = prevoz_div.find("div", {"class": "display-path"})["data-args"]
 
 			vsi_prevozi.append({
 				"prihod": prihod,
 				"odhod": odhod,
-				"trajanje": trajanje,
 				"peron": "",
 				"prevoznik": prevoznik,
 				"cena": cena,
 				"razdalja": razdalja,
-				"parametri_postaje": dodatni_podatki
+				"_parametri_postaje": dodatni_podatki
 			})
 
 		return vsi_prevozi
@@ -104,7 +104,7 @@ class Arriva(Prevoznik):
 	def vmesnePostaje(self, prevoz):
 		relacije = []
 
-		get_parameters = eval(prevoz["parametri_postaje"])
+		get_parameters = eval(prevoz["_parametri_postaje"])
 		get_parameters["action"] = "get_DepartureStationList"
 
 		response = self.seja.get("https://arriva.si/wp-admin/admin-ajax.php", params=get_parameters)
@@ -125,8 +125,12 @@ class Arriva(Prevoznik):
 			uraPrihoda = datetime.datetime.strptime(prihod, "%H:%M")
 			datumPrihoda = datumPrihoda.replace(hour=uraPrihoda.hour, minute=uraPrihoda.minute)
 
+			if datumPrihoda < prevoz['odhod']:
+				datumPrihoda = datumPrihoda + datetime.timedelta(days = 1)
+
 			relacije.append({
 				"postaja": ime_postaje,
 				"cas_prihoda": datumPrihoda
 			})
+
 		return relacije

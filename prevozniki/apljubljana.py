@@ -47,21 +47,21 @@ class APLjubljana(Prevoznik):
 				continue
 			odhod = podatki[6]
 			prihod = podatki[7]
-			trajanje = podatki[8]
-			cena = podatki[9]
+			cena = float(podatki[9])
 			uraPrihoda = datetime.datetime.strptime(prihod, "%Y-%m-%d %H:%M:%S")
 			uraOdhoda = datetime.datetime.strptime(odhod, "%Y-%m-%d %H:%M:%S")
 			dodatniPodatki = podatki[-1]
+
+			# Podatka o razdalji tukaj nimamo
+
 			prevoz = {
 				"prihod": uraPrihoda,
 				"odhod": uraOdhoda,
-				"trajanje": trajanje,
 				"peron": "",
 				"prevoznik": "AP LJUBLJANA",
-				"cena": "{} EUR".format(cena),
-				"razdalja": "/",
-				"url": "",
-				"vmesne_postaje_data": dodatniPodatki
+				"cena": cena,
+				"razdalja": 0,
+				"_vmesne_postaje_data": dodatniPodatki
 			}
 			prevozi.append(prevoz)
 		return prevozi
@@ -69,7 +69,7 @@ class APLjubljana(Prevoznik):
 	def vmesnePostaje(self, prevoz):
 		url = "https://www.ap-ljubljana.si/_vozni_red/get_linija_info_0.php"
 		response = self.seja.post(url, data={
-			"flags": prevoz['vmesne_postaje_data']
+			"flags": prevoz['_vmesne_postaje_data']
 		})
 		relacije = []
 		for vrstica in response.text.split("\n")[1:]:
@@ -78,6 +78,7 @@ class APLjubljana(Prevoznik):
 				continue
 			postaja = podatki[1]
 			cas = datetime.datetime.strptime(podatki[2], "%Y-%m-%d %H:%M:%S")
+
 			relacije.append({
 				"postaja": postaja,
 				"cas_prihoda": cas
