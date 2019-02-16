@@ -159,6 +159,10 @@ def vozni_red():
 		for prevoz in najdeni_prevozi:
 			prevoz['odhod'] = prevoz['odhod'].strftime('%H:%M')
 			prevoz['prihod'] = prevoz['prihod'].strftime('%H:%M')
+			if 'vmesne_postaje' not in prevoz:
+				continue
+			for postaja in prevoz['vmesne_postaje']:
+				postaja['cas_prihoda'] = postaja['cas_prihoda'].strftime('%H:%M')
 		return jsonify(najdeni_prevozi)
 	
 	# Prevoza nismo se nasli v bazi, poiscemo ga
@@ -197,6 +201,10 @@ def vozni_red():
 	for prevoz in skupni_vozni_red:
 		prevoz['odhod'] = prevoz['odhod'].strftime('%H:%M')
 		prevoz['prihod'] = prevoz['prihod'].strftime('%H:%M')
+		if 'vmesne_postaje' not in prevoz:
+			continue
+		for postaja in prevoz['vmesne_postaje']:
+			postaja['cas_prihoda'] = postaja['cas_prihoda'].strftime('%H:%M')
 
 	return jsonify(skupni_vozni_red)
 
