@@ -41,6 +41,9 @@ prevozi = database.prevozi
 # V tabeli iskanja hranimo vsako iskanje uporabnikov za analize
 iskanja = database.iskanja
 
+# V tabeli obvestila hranimo obvestila za uporabnike
+obvestila = database.obvestila
+
 # Ustvarimo objekte, za prenos podatkov o voznih redih
 prevozniki = [Avrigo(), AvtobusniPrevozMurskaSobota(), APLjubljana(), Arriva()]
 
@@ -59,6 +62,22 @@ def error(number, message, icon="/images/default_error.png"):
 # Definiramo endpoint za obvestila
 @app.route("/api/v2/obvestilo", methods=["GET"])
 def najdi_obvestila():
+	# Zadnje odprtje ni obvezno, ce ga ni, vrnemo None
+	zadnje_odprtje = request.args.get('od')
+	
+	if not zadnje_odprtje:
+		return jsonify(None)
+
+	# Pretvorimo datum zadnjega odprtja v datetime objekt
+	pretvorjen_datum = dateutil.parser.parse(zadnje_odprtje)
+
+	# Poiscemo obvestila
+	najdena_obvestila = obvestila.find({"datum_objave": {"$gt": pretvorjen_datum}}).sort("datum_objave", -1)
+
+	if najdena_obvestila.count() > 0:
+		return jsonify(najdena_obvestila[0])
+
+	# Vrnemo zadnje obvestilo
 	return jsonify(None)
 
 def izracunajPrioritetoInIkono(iskanaPostaja, imePostaje):
