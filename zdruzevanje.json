@@ -1,0 +1,35 @@
+{
+    "Ljubljana": [
+        {
+            "prevoznik": "Arriva",
+            "postaja": "Ljubljana AP"
+        },
+        {
+            "prevoznik": "APLjubljana",
+            "postaja": "LJUBLJANA AVTOBUSNA POSTAJA"
+        },
+        {
+            "prevoznik": "Avrigo",
+            "postaja": "Ljubljana AP"
+        },
+        {
+            "prevoznik": "AvtobusniPrevozMurskaSobota",
+            "postaja": "Ljubljana AP"
+        }
+    ],
+
+    "Nova Gorica": [
+        {
+            "prevoznik": "Arriva",
+            "postaja": "Nova Gorica AP"
+        },
+        {
+            "prevoznik": "Avrigo",
+            "postaja": "Nova Gorica AP"
+        },
+        {
+            "prevoznik": "APLjubljana",
+            "postaja": "Nova Gorica"
+        }
+    ]
+}

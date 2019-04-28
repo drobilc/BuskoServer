@@ -3,6 +3,7 @@ from flask.json import JSONEncoder
 import datetime, dateutil.parser
 import glob, os, importlib, inspect
 import sys
+import json
 from pymongo import MongoClient
 from bson.objectid import ObjectId
 from concurrent.futures import ThreadPoolExecutor
@@ -12,6 +13,7 @@ from prevozniki.avrigo import Avrigo
 from prevozniki.apms import AvtobusniPrevozMurskaSobota
 from prevozniki.apljubljana import APLjubljana
 from prevozniki.arriva import Arriva
+from prevozniki.update import Update
 
 class CustomJSONEncoder(JSONEncoder):
 
@@ -52,6 +54,28 @@ slovar_prevozniki = {}
 for prevoznik in prevozniki:
 	slovar_prevozniki[type(prevoznik).__name__] = prevoznik
 
+with open("zdruzevanje.json", encoding="utf8") as datoteka:
+    preslikovalna_tabela = json.load(datoteka)
+
+def preslikaj(postaja):
+    preslikave = {}
+    
+    if postaja in preslikovalna_tabela:
+        
+        for preslikava in preslikovalna_tabela[postaja]:
+            if preslikava["prevoznik"] not in preslikave:
+                preslikave[preslikava["prevoznik"]] = []
+            preslikave[preslikava["prevoznik"]].append(preslikava["postaja"])
+        
+        for prevoznik in slovar_prevozniki:
+            if prevoznik not in preslikave:
+                preslikave[prevoznik] = [postaja]
+        
+    else:
+        for prevoznik in slovar_prevozniki:
+            preslikave[prevoznik] = [postaja]
+    return preslikave
+
 def error(number, message, icon="/images/default_error.png"):
 	return jsonify({
 		"error": number,
@@ -83,7 +107,10 @@ def najdi_obvestila():
 def izracunajPrioritetoInIkono(iskanaPostaja, imePostaje):
 	prioriteta = 0
 	ikona = None
-	if "AP" in imePostaje:
+	if imePostaje in preslikovalna_tabela:
+		prioriteta = 30
+		ikona = "/images/star.png"
+	elif "AP" in imePostaje:
 		prioriteta = 20
 		ikona = "/images/bus.png"
 	elif "ŽP" in imePostaje:
@@ -105,14 +132,32 @@ def seznam_postaj():
 	limit = request.args.get('limit')
 
 	skupne_postaje_prevozniki = {}
+
+	izlocene_postaje = {}
+	# Dodamo najprej postaje iz preslikovalne tabele
+	for postaja in preslikovalna_tabela:
+		if iskanje.lower() in postaja.lower():
+			skupne_postaje_prevozniki[postaja] = list(set([podatek['prevoznik'] for podatek in preslikovalna_tabela[postaja]]))
+			
+			for vnos in preslikovalna_tabela[postaja]:
+				if vnos['prevoznik'] not in izlocene_postaje:
+					izlocene_postaje[vnos['prevoznik']] = []
+				izlocene_postaje[vnos['prevoznik']].append(vnos['postaja'])
+
 	for prevoznik in prevozniki:
 		prevoznik_postaje = prevoznik.seznamPostaj()
 		if iskanje:
 			prevoznik_postaje = filter(lambda ime: iskanje.lower() in ime.lower(), prevoznik_postaje)
-		for postaja in prevoznik_postaje:
-			if postaja not in skupne_postaje_prevozniki:
-				skupne_postaje_prevozniki[postaja] = []
-			skupne_postaje_prevozniki[postaja].append(prevoznik.__class__.__name__)
+			for postaja in prevoznik_postaje:
+
+				# Preverimo ali je postaja izlocena, ce je jo preskocimo
+				if prevoznik.__class__.__name__ in izlocene_postaje and postaja in izlocene_postaje[prevoznik.__class__.__name__]:
+					continue
+				
+				if postaja not in skupne_postaje_prevozniki:
+					skupne_postaje_prevozniki[postaja] = []
+				
+				skupne_postaje_prevozniki[postaja].append(prevoznik.__class__.__name__)
 
 	imena_postaj = skupne_postaje_prevozniki.keys()
 	vse_postaje = [{
@@ -181,42 +226,76 @@ def vozni_red():
 		najdeni_prevozi = list(najdeni_prevozi)
 		# Prevoz je ze najden, vrnemo rezultat poizvedbe
 		# Drugi problem je cas pri prevozih, imamo ga namrec v datetime objektu, radi bi pa imeli niz "HH:MM"
-		return jsonify(najdeni_prevozi)
+		rezultat = {
+			"vstopna_postaja": vstopna_postaja,
+			"izstopna_postaja": izstopna_postaja,
+			"datum": datum,
+			"prevozniki": list(set([prevoz['_prevoznik'] for prevoz in najdeni_prevozi])),
+			"prevozi": najdeni_prevozi
+		}
+		return jsonify(rezultat)
 	
 	# Prevoza nismo se nasli v bazi, poiscemo ga
 	skupni_vozni_red = []
 
+	# Preslikava nam vrne za vsakega prevoznika seznam imen postaj, ki ustrezajo izbiri
+	vstopna_preslikava = preslikaj(vstopna_postaja)
+	izstopna_preslikava = preslikaj(izstopna_postaja)
+
 	ustrezni_prevozniki = []
+
 	for prevoznik in prevozniki:
-		if prevoznik.obstajaPostaja(vstopna_postaja) and prevoznik.obstajaPostaja(izstopna_postaja):
-			ustrezni_prevozniki.append(prevoznik)
+		
+		# Najdemo ustrezne vstopne in izstopne postaje za prevoznika
+		vstopne_postaje = vstopna_preslikava[type(prevoznik).__name__]
+		izstopne_postaje = izstopna_preslikava[type(prevoznik).__name__]
+		
+		# Preverimo, ali ima ta prevoznik sploh te postaje
+		prave_vstopne_postaje = list(filter(lambda postaja: prevoznik.obstajaPostaja(postaja), vstopne_postaje))
+		prave_izstopne_postaje = list(filter(lambda postaja: prevoznik.obstajaPostaja(postaja), vstopne_postaje))
+
+		if len(prave_vstopne_postaje) > 0 and len(prave_izstopne_postaje) > 0:
+			ustrezni_prevozniki.append({
+				"prevoznik": prevoznik,
+				"vstopne_postaje": prave_vstopne_postaje,
+				"izstopne_postaje": izstopne_postaje
+			})
 
 	if len(ustrezni_prevozniki) <= 0:
 		return error(406, "Med izbranimi postajami ne vozi noben izmed prevoznikov")
 
 	# Nad vsemi objekti skupaj izvedemo iskanje, tako pohitrimo izvajanje
-	with ThreadPoolExecutor(max_workers=len(ustrezni_prevozniki)) as pool:
+	with ThreadPoolExecutor(max_workers=8) as pool:
 		for prevoznik in ustrezni_prevozniki:
-			rezultat = pool.submit(prevoznik.prenesiVozniRed, vstopna_postaja, izstopna_postaja, pretvorjen_datum)
-			najdeni_prevozi = rezultat.result()
 
-			# Vsakemo prevozu dodamo se ime internega razreda za pretvorbo nazaj ce bo potrebno
-			for prevoz in najdeni_prevozi:
-				prevoz["_prevoznik"] = type(prevoznik).__name__
-				prevoz["_id"] = ObjectId()
+			for najdena_vstopna_postaja in prevoznik['vstopne_postaje']:
+				for najdena_izstopna_postaja in prevoznik['izstopne_postaje']:
 			
-			skupni_vozni_red.extend(najdeni_prevozi)
+					rezultat = pool.submit(prevoznik['prevoznik'].prenesiVozniRed, najdena_vstopna_postaja, najdena_izstopna_postaja, pretvorjen_datum)
+					najdeni_prevozi = rezultat.result()
+
+					# Vsakemo prevozu dodamo se ime internega razreda za pretvorbo nazaj ce bo potrebno
+					for prevoz in najdeni_prevozi:
+						prevoz["_prevoznik"] = type(prevoznik['prevoznik']).__name__
+						prevoz["vstopna_postaja"] = vstopna_postaja
+						prevoz["izstopna_postaja"] = izstopna_postaja
+					
+					skupni_vozni_red.extend(najdeni_prevozi)
 
 	# Prenesli smo vse vozne rede prevoznikov, uredimo jih po uri odhoda
 	skupni_vozni_red.sort(key=lambda x: x["odhod"])
 
-	for prevoz in skupni_vozni_red:
-		prevoz["vstopna_postaja"] = vstopna_postaja
-		prevoz["izstopna_postaja"] = izstopna_postaja
+	if len(skupni_vozni_red) > 0:
+		prevozi.insert_many(skupni_vozni_red)
 
-	prevozi.insert_many(skupni_vozni_red)
-
-	return jsonify(skupni_vozni_red)
+	rezultat = {
+		"vstopna_postaja": vstopna_postaja,
+		"izstopna_postaja": izstopna_postaja,
+		"datum": datum,
+		"prevozniki": [type(prevoznik['prevoznik']).__name__ for prevoznik in ustrezni_prevozniki],
+		"prevozi": skupni_vozni_red
+	}
+	return jsonify(rezultat)
 
 @app.route("/api/v2/prevoz", methods=["GET"])
 def prevoz():
