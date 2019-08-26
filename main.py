@@ -75,29 +75,31 @@ def preslikaj(postaja):
             preslikave[prevoznik] = [postaja]
     return preslikave
 
-def zdruzi_prevoza(prvi, drugi):
+def zdruzi_prevoze(prevozi):
+	print(f"Zdruzujem {len(prevozi)} prevozov")
+	if len(prevozi) == 1:
+		return prevozi[0]
+	
+	nov_prevoz = prevozi[0]
+
 	parametri = ["cena", "odhod", "prihod", "peron", "prevoznik", "razdalja"]
 	for parameter in parametri:
-		# Ce parameter sploh ne obstaja, oziroma ce je v prvem in ni v drugem, ga preskocimo
-		if (parameter not in prvi and parameter not in drugi) or (parameter in prvi and parameter not in drugi):
+		moznosti = [prevoz[parameter] for prevoz in prevozi if parameter in prevoz and prevoz[parameter]]
+
+		if len(moznosti) < 1:
 			continue
 		
-		# Ce parametra ni v prvem je pa v drugem, ga dodamo iz drugega
-		elif parameter not in prvi and parameter in drugi:
-			prvi[parameter] = drugi[parameter]
-		
-		# Parameter je v obeh prevozih, pogledamo kateri je boljsi?
-		else:
-			# Privzamemo, da je prvi vozni red boljsi, ce je v drugem
-			# parameter daljsi, ga privzamemo
-			if isinstance(drugi[parameter], int):
-				if drugi[parameter] > prvi[parameter]:
-					prvi[parameter] = drugi[parameter]
-			else:
-				if len(str(drugi[parameter])) > len(str(prvi[parameter])):
-					prvi[parameter] = drugi[parameter]
+		# Ce je parameter stevilo, vzamemo najvecjo vrednost iz seznama
+		if isinstance(moznosti[0], int) or isinstance(moznosti[0], float):
+			nov_prevoz[parameter] = max(moznosti)
 	
-	return prvi
+	# Na koncu zdruzimo se imena prevoznikov
+	ime_prevoznika = ", ".join([prevoz['_prevoznik'] for prevoz in prevozi if parameter in prevoz and prevoz['prevoznik']])
+	if len(ime_prevoznika) >= 30:
+		ime_prevoznika = "{}...".format(ime_prevoznika[0:27])
+	nov_prevoz['prevoznik'] = ime_prevoznika
+
+	return nov_prevoz
 
 def preveri_enakost(prvi, drugi):
 	parametri = ["odhod", "prihod"]
@@ -111,25 +113,35 @@ def zdruzi_enake(vozni_red):
 	# Zdruzimo prevoza, ki se ujemata v:
 	#   * casu odhoda
 	#   * casu prihoda
-	#   * imenu prevoznika (vsaj 80%?)
-	# ce zdruzimo, se ne premaknemo naprej v tabeli
 
-	i = 0
-	while i < len(vozni_red) - 1:
+	nov_vozni_red = []
 
-		trenutni_prevoz = vozni_red[i]
-		naslednji_prevoz = vozni_red[i + 1]
+	trenutni_prevozi = []
+	for i, prevoz in enumerate(vozni_red):
+		# Ce v seznamu trenutnih prevozov se ni prevoza, ga dodamo in nadaljujemo
+		if len(trenutni_prevozi) < 1:
+			trenutni_prevozi.append(prevoz)
+			continue
 		
-		# Preverimo ali sta "enaka"
-		
-		if preveri_enakost(trenutni_prevoz, naslednji_prevoz):
-			# zdruzimo prvi in drugi element v enega samega (na indeksu i)
-			vozni_red[i] = zdruzi_prevoza(trenutni_prevoz, naslednji_prevoz)
+		if preveri_enakost(trenutni_prevozi[-1], prevoz):
+			# Enaka sta, prevoz dodamo v trenutni_prevozi
+			trenutni_prevozi.append(prevoz)
+		else:
+			# Prevoz ni enak, najprej zdruzimo vse prevoze v tabeli trenutni_prevozi
+			nov_prevoz = zdruzi_prevoze(trenutni_prevozi)
 			
-			# drugi element izbrisemo
-			vozni_red.remove(naslednji_prevoz)
+			# Prevoz dodamo v nov vozni red
+			nov_vozni_red.append(nov_prevoz)
 
-	return vozni_red
+			# Izpraznimo tabelo trenutni_prevozi
+			trenutni_prevozi = []
+	
+	# Na koncu je lahko seznam trenutni_prevozi se vedno polna 
+	if len(trenutni_prevozi) > 0:
+		nov_prevoz = zdruzi_prevoze(trenutni_prevozi)
+		nov_vozni_red.append(nov_prevoz)
+
+	return nov_vozni_red
 
 def error(number, message, icon="/images/default_error.png"):
 	return jsonify({
@@ -286,7 +298,7 @@ def vozni_red():
 			"izstopna_postaja": izstopna_postaja,
 			"datum": datum,
 			"prevozniki": list(set([prevoz['_prevoznik'] for prevoz in najdeni_prevozi])),
-			"prevozi": najdeni_prevozi
+			"prevozi": zdruzi_enake(najdeni_prevozi)
 		}
 		return jsonify(rezultat)
 	
@@ -327,23 +339,25 @@ def vozni_red():
 				for najdena_izstopna_postaja in prevoznik['izstopne_postaje']:
 			
 					rezultat = pool.submit(prevoznik['prevoznik'].prenesiVozniRed, najdena_vstopna_postaja, najdena_izstopna_postaja, pretvorjen_datum)
-					najdeni_prevozi = rezultat.result()
-
-					# Vsakemo prevozu dodamo se ime internega razreda za pretvorbo nazaj ce bo potrebno
-					for prevoz in najdeni_prevozi:
-						prevoz["_prevoznik"] = type(prevoznik['prevoznik']).__name__
-						prevoz["vstopna_postaja"] = vstopna_postaja
-						prevoz["izstopna_postaja"] = izstopna_postaja
-					
-					skupni_vozni_red.extend(najdeni_prevozi)
+					try:
+						najdeni_prevozi = rezultat.result()
+						# Vsakemo prevozu dodamo se ime internega razreda za pretvorbo nazaj ce bo potrebno
+						for prevoz in najdeni_prevozi:
+							prevoz["_prevoznik"] = type(prevoznik['prevoznik']).__name__
+							prevoz["vstopna_postaja"] = vstopna_postaja
+							prevoz["izstopna_postaja"] = izstopna_postaja
+						
+						skupni_vozni_red.extend(najdeni_prevozi)
+					except Exception:
+						pass
 
 	# Prenesli smo vse vozne rede prevoznikov, uredimo jih po uri odhoda
 	skupni_vozni_red.sort(key=lambda x: x["odhod"])
 
-	skupni_vozni_red = zdruzi_enake(skupni_vozni_red)
-
 	if len(skupni_vozni_red) > 0:
 		prevozi.insert_many(skupni_vozni_red)
+	
+	skupni_vozni_red = zdruzi_enake(skupni_vozni_red)
 
 	rezultat = {
 		"vstopna_postaja": vstopna_postaja,
