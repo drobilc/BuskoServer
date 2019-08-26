@@ -16,22 +16,22 @@ class Avrigo(Prevoznik):
 			self.EVENTVALIDATION = html.find(id="__EVENTVALIDATION")['value']
 		except Exception:
 			pass
-		self.prenesiSeznamPostaj()
+		
+		self.postaje = self.prenesiSeznamPostaj()
+		self.imenaPostaj = [postaja.lower() for postaja in self.postaje]
 
 	def prenesiSeznamPostaj(self):
 		postajeUrl = "https://voznired.noleggio-bus.it/Postajalisca.aspx/GetCompletionList"
 		podatki = {"prefixText": "", "count": 1000000}
 		response = self.seja.post(postajeUrl, json=podatki)
 		jsonData = response.json()
-		self.postaje = jsonData['d']
+		return jsonData['d']
 
 	def seznamPostaj(self):
-		if len(self.postaje) <= 0:
-			self.prenesiSeznamPostaj()
 		return self.postaje
 
 	def obstajaPostaja(self, imePostaje):
-		return imePostaje in self.postaje
+		return imePostaje.lower() in self.imenaPostaj
 
 	def prenesiSurovePodatke(self, vstopnaPostaja, izstopnaPostaja, datum):
 		pretvorjenDatum = datum.strftime("%d.%m.%Y")
@@ -65,7 +65,7 @@ class Avrigo(Prevoznik):
 		vrstice = tabela.findAll("tr")
 
 		# Dobimo naslove vrstic (prevoznik, prihod, odhod, ...)
-		#nasloviVrstic = [stolpec.text.lower() for stolpec in vrstice[0].findAll("td")]
+		# nasloviVrstic = [stolpec.text.lower() for stolpec in vrstice[0].findAll("td")]
 		# Naslovi vrstic so vedno enaki
 		nasloviVrstic = ["prevoznik", "odhod", "prihod", "trajanje", "razdalja", "peron", "cena"]
 

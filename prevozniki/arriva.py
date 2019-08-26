@@ -24,7 +24,8 @@ class Arriva(Prevoznik):
 		self.datetime = datetimeMatch.group(1)
 		self.timestamp = timestampMatch.group(1)
 
-		self.prenesiSeznamPostaj()
+		self.postaje = self.prenesiSeznamPostaj()
+		self.imenaPostaj = dict([(item[0].lower(), item[1]) for item in self.postaje.items()])
 
 	def prenesiSeznamPostaj(self):
 		get_parameters = {
@@ -36,25 +37,31 @@ class Arriva(Prevoznik):
 		}
 		response = self.seja.get("https://prometws.alpetour.si/WS_ArrivaSLO_TimeTable_DepartureStations.aspx", params=get_parameters)
 
-		self.postaje = {}
+		postaje = {}
 		for postaja in response.json()[0]['DepartureStations']:
-			self.postaje[postaja["POS_NAZ"]] = postaja["JPOS_IJPP"]
+			postaje[postaja["POS_NAZ"]] = postaja["JPOS_IJPP"]
+		return postaje
 
 	def seznamPostaj(self):
-		if len(self.postaje) <= 0:
-			self.prenesiSeznamPostaj()
 		return [postaja for postaja in self.postaje]
 
 	def obstajaPostaja(self, imePostaje):
-		return imePostaje in self.postaje
+		return imePostaje.lower() in self.imenaPostaj
+	
+	def postajaId(self, imePostaje):
+		# Najprej preverimo ali postaja sploh obstaja
+		if not self.obstajaPostaja(imePostaje):
+			return None
+		# Ce obstaja, vrnemo njen id (poiscemo jo v slovarju imenaPostaj)
+		return self.imenaPostaj[imePostaje.lower()]
 
 	def prenesiVozniRed(self, vstopnaPostaja, izstopnaPostaja, datum):
 		url = "https://arriva.si/vozni-redi/?departure=Ljubljana+AP&departure_id=138922&destination=Ajdov%C5%A1%C4%8Dina&destination_id=137011&trip_date=15.02.2019"
 		get_parameters = {
 			"departure": vstopnaPostaja,
-			"departure_id": self.postaje[vstopnaPostaja],
+			"departure_id": self.postajaId(vstopnaPostaja),
 			"destination": izstopnaPostaja,
-			"destination_id": self.postaje[izstopnaPostaja],
+			"destination_id": self.postajaId(izstopnaPostaja),
 			"trip_date": datum.strftime("%d.%m.%Y")
 		}
 		response = self.seja.get("https://arriva.si/vozni-redi/", params=get_parameters)

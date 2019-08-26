@@ -8,7 +8,14 @@ class APLjubljana(Prevoznik):
 	
 	def __init__(self):
 		self.seja = requests.Session()
+
+		# Hranimo dva slovarja:
+		#   * postaje: { id_postaje (int) : ime_postaje (string, case sensitive) }
+		#   * imenaPostaj: { ime_postaje (string, case insensitive): id_postaje (int) }
 		self.postaje = self.prenesiSeznamPostaj()
+
+		# Na podlagi prenesenega slovarja ustvarimo nov slovar, kjer obrnemo vrstni red elementov
+		self.imenaPostaj = dict([(item[1].lower(), item[0]) for item in self.postaje.items()])
 
 	def prenesiSeznamPostaj(self):
 		response = self.seja.get("https://www.ap-ljubljana.si/_vozni_red/get_postajalisca_vsa_v2.php")
@@ -21,25 +28,31 @@ class APLjubljana(Prevoznik):
 		return postaje
 
 	def seznamPostaj(self):
+		# Funkcija vrne case sensitive seznam postaj
 		return list(self.postaje.values())
 
 	def obstajaPostaja(self, imePostaje):
-		return imePostaje in self.postaje.values()
+		# Sprejmemo ime postaje in preverimo ali postaja s takim imenom obstaja (case insensitive)
+		return imePostaje.lower() in self.imenaPostaj
 
 	def postajaId(self, imePostaje):
-		for postaja in self.postaje:
-			if self.postaje[postaja] == imePostaje:
-				return postaja
+		# Najprej preverimo ali postaja sploh obstaja
+		if not self.obstajaPostaja(imePostaje):
+			return None
+		# Ce obstaja, vrnemo njen id (poiscemo jo v slovarju imenaPostaj)
+		return self.imenaPostaj[imePostaje.lower()]
 
 	def prenesiVozniRed(self, vstopnaPostaja, izstopnaPostaja, datum):
+		# Datum najprej pretvorimo v ustrezen format (v niz)
 		if type(datum) is datetime.datetime:
 			datum = datum.strftime("%d.%m.%Y")
-		url = "https://www.ap-ljubljana.si/_vozni_red/get_vozni_red_0.php"
-		response = self.seja.post(url, data={
+		
+		response = self.seja.post("https://www.ap-ljubljana.si/_vozni_red/get_vozni_red_0.php", data={
 			"VSTOP_ID": self.postajaId(vstopnaPostaja),
 			"IZSTOP_ID": self.postajaId(izstopnaPostaja),
 			"DATUM": datum
 		})
+
 		prevozi = []
 		for vrstica in response.text.split("\n"):
 			podatki = vrstica.split("|")
@@ -53,7 +66,6 @@ class APLjubljana(Prevoznik):
 			dodatniPodatki = podatki[-1]
 
 			# Podatka o razdalji tukaj nimamo
-
 			prevoz = {
 				"prihod": uraPrihoda,
 				"odhod": uraOdhoda,
@@ -67,8 +79,7 @@ class APLjubljana(Prevoznik):
 		return prevozi
 
 	def vmesnePostaje(self, prevoz):
-		url = "https://www.ap-ljubljana.si/_vozni_red/get_linija_info_0.php"
-		response = self.seja.post(url, data={
+		response = self.seja.post("https://www.ap-ljubljana.si/_vozni_red/get_linija_info_0.php", data={
 			"flags": prevoz['_vmesne_postaje_data']
 		})
 		relacije = []

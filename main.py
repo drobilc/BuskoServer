@@ -13,7 +13,6 @@ from prevozniki.avrigo import Avrigo
 from prevozniki.apms import AvtobusniPrevozMurskaSobota
 from prevozniki.apljubljana import APLjubljana
 from prevozniki.arriva import Arriva
-from prevozniki.update import Update
 
 class CustomJSONEncoder(JSONEncoder):
 
@@ -75,6 +74,62 @@ def preslikaj(postaja):
         for prevoznik in slovar_prevozniki:
             preslikave[prevoznik] = [postaja]
     return preslikave
+
+def zdruzi_prevoza(prvi, drugi):
+	parametri = ["cena", "odhod", "prihod", "peron", "prevoznik", "razdalja"]
+	for parameter in parametri:
+		# Ce parameter sploh ne obstaja, oziroma ce je v prvem in ni v drugem, ga preskocimo
+		if (parameter not in prvi and parameter not in drugi) or (parameter in prvi and parameter not in drugi):
+			continue
+		
+		# Ce parametra ni v prvem je pa v drugem, ga dodamo iz drugega
+		elif parameter not in prvi and parameter in drugi:
+			prvi[parameter] = drugi[parameter]
+		
+		# Parameter je v obeh prevozih, pogledamo kateri je boljsi?
+		else:
+			# Privzamemo, da je prvi vozni red boljsi, ce je v drugem
+			# parameter daljsi, ga privzamemo
+			if isinstance(drugi[parameter], int):
+				if drugi[parameter] > prvi[parameter]:
+					prvi[parameter] = drugi[parameter]
+			else:
+				if len(str(drugi[parameter])) > len(str(prvi[parameter])):
+					prvi[parameter] = drugi[parameter]
+	
+	return prvi
+
+def preveri_enakost(prvi, drugi):
+	parametri = ["odhod", "prihod"]
+	for parameter in parametri:
+		if parameter in prvi and parameter in drugi and str(prvi[parameter]) != str(drugi[parameter]):
+			return False
+	return True
+
+def zdruzi_enake(vozni_red):
+	# Zdruzujemo po dva prevoza naenkrat - trenutnega in naslednjega
+	# Zdruzimo prevoza, ki se ujemata v:
+	#   * casu odhoda
+	#   * casu prihoda
+	#   * imenu prevoznika (vsaj 80%?)
+	# ce zdruzimo, se ne premaknemo naprej v tabeli
+
+	i = 0
+	while i < len(vozni_red) - 1:
+
+		trenutni_prevoz = vozni_red[i]
+		naslednji_prevoz = vozni_red[i + 1]
+		
+		# Preverimo ali sta "enaka"
+		
+		if preveri_enakost(trenutni_prevoz, naslednji_prevoz):
+			# zdruzimo prvi in drugi element v enega samega (na indeksu i)
+			vozni_red[i] = zdruzi_prevoza(trenutni_prevoz, naslednji_prevoz)
+			
+			# drugi element izbrisemo
+			vozni_red.remove(naslednji_prevoz)
+
+	return vozni_red
 
 def error(number, message, icon="/images/default_error.png"):
 	return jsonify({
@@ -284,6 +339,8 @@ def vozni_red():
 
 	# Prenesli smo vse vozne rede prevoznikov, uredimo jih po uri odhoda
 	skupni_vozni_red.sort(key=lambda x: x["odhod"])
+
+	skupni_vozni_red = zdruzi_enake(skupni_vozni_red)
 
 	if len(skupni_vozni_red) > 0:
 		prevozi.insert_many(skupni_vozni_red)
