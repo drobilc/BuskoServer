@@ -76,7 +76,6 @@ def preslikaj(postaja):
     return preslikave
 
 def zdruzi_prevoze(prevozi):
-	print(f"Zdruzujem {len(prevozi)} prevozov")
 	if len(prevozi) == 1:
 		return prevozi[0]
 	
@@ -134,7 +133,7 @@ def zdruzi_enake(vozni_red):
 			nov_vozni_red.append(nov_prevoz)
 
 			# Izpraznimo tabelo trenutni_prevozi
-			trenutni_prevozi = []
+			trenutni_prevozi = [prevoz]
 	
 	# Na koncu je lahko seznam trenutni_prevozi se vedno polna 
 	if len(trenutni_prevozi) > 0:
