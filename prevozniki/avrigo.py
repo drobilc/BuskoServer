@@ -9,7 +9,7 @@ class Avrigo(Prevoznik):
 	def __init__(self):
 		self.seja = requests.Session()
 		try:
-			response = self.seja.get("https://voznired.noleggio-bus.it/VozniRed.aspx")
+			response = self.seja.get("https://voznired.avrigo.si/VozniRed.aspx")
 			html = BeautifulSoup(response.content, "html.parser")
 			self.VIEWSTATE = html.find(id="__VIEWSTATE")['value']
 			self.VIEWSTATEGENERATOR = html.find(id="__VIEWSTATEGENERATOR")['value']
@@ -21,7 +21,7 @@ class Avrigo(Prevoznik):
 		self.imenaPostaj = [postaja.lower() for postaja in self.postaje]
 
 	def prenesiSeznamPostaj(self):
-		postajeUrl = "https://voznired.noleggio-bus.it/Postajalisca.aspx/GetCompletionList"
+		postajeUrl = "https://voznired.avrigo.si/Postajalisca.aspx/GetCompletionList"
 		podatki = {"prefixText": "", "count": 1000000}
 		response = self.seja.post(postajeUrl, json=podatki)
 		jsonData = response.json()
@@ -35,7 +35,7 @@ class Avrigo(Prevoznik):
 
 	def prenesiSurovePodatke(self, vstopnaPostaja, izstopnaPostaja, datum):
 		pretvorjenDatum = datum.strftime("%d.%m.%Y")
-		vozniRedUrl = "https://voznired.noleggio-bus.it/VozniRed.aspx"
+		vozniRedUrl = "https://voznired.avrigo.si/VozniRed.aspx"
 
 		podatki = {
 			"ToolkitScriptManager1": "ToolkitScriptManager1|ButtonPrikazi",
@@ -87,7 +87,7 @@ class Avrigo(Prevoznik):
 					podatki = re.split(r",\s?", rezultati.group(1))
 					for podatek in podatki:
 						izlusceni_podatki.append(podatek.replace("'", "").strip())
-				potUrl = "http://voznired.avrigo.si/PotekVoznje.aspx?REG_ISIF={}&OVR_SIF={}&LIS_ZAPZ={}&LIS_ZAPK={}&VVLN_ZL={}".format(izlusceni_podatki[1], izlusceni_podatki[2], izlusceni_podatki[3], izlusceni_podatki[4], izlusceni_podatki[5])
+				potUrl = "https://voznired.avrigo.si/PotekVoznje.aspx?REG_ISIF={}&OVR_SIF={}&LIS_ZAPZ={}&LIS_ZAPK={}&VVLN_ZL={}".format(izlusceni_podatki[1], izlusceni_podatki[2], izlusceni_podatki[3], izlusceni_podatki[4], izlusceni_podatki[5])
 		
 			slovarPodatkov = dict(zip(nasloviVrstic, besediloStolpcev))
 			slovarPodatkov["_url"] = potUrl
